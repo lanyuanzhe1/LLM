@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "read -r json; f=$(echo \"$json\" | python -c \"import sys,json; print(json.load(sys.stdin)['tool_input']['file_path'])\"); case \"$f\" in *.py) ruff format --quiet \"$f\" && ruff check --fix --quiet \"$f\" ;; esac 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Formatting with ruff..."
+          }
+        ]
+      }
+    ]
+  }
+}
