@@ -1,0 +1,9 @@
+.worktrees/
+.superpowers/
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+vector_store/

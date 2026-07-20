@@ -13,9 +13,13 @@ import hmac
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 import time
 import uuid
+import warnings
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Tuple
@@ -31,18 +35,17 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 # ============================================================
-# CONFIG - Fill in your values
+# CONFIG - credentials are provided by the process environment
 # ============================================================
-APP_ID = "5c75015a"
-API_KEY = "d29f3016bcfa0ac8a46fcce888d7c0fb"
-API_SECRET = "YTQxNzQ1MjhkNzljODMxYTQ1OTRiMWZh"
+APP_ID = os.environ.get("XF_APP_ID", "")
+API_KEY = os.environ.get("XF_EMBEDDING_API_KEY", "")
+API_SECRET = os.environ.get("XF_EMBEDDING_API_SECRET", "")
 
 # Document directory (your knowledge base files)
 DOC_DIR = Path("./knowledge")
 
 # Output directory (vector store)
 OUTPUT_DIR = Path("./vector_store")
-OUTPUT_DIR.mkdir(exist_ok=True)
 
 # Chunking parameters
 CHUNK_SIZE = 600  # characters per chunk
@@ -99,6 +102,14 @@ def read_docx_file(file_path: Path) -> str:
 
 def load_documents(doc_dir: Path) -> List[dict]:
     """Walk directory, read all supported documents."""
+    if doc_dir.is_symlink():
+        raise RuntimeError("document directory must not be a symlink")
+    try:
+        resolved_doc_dir = doc_dir.resolve(strict=True)
+    except OSError as exc:
+        raise RuntimeError(
+            f"document directory is unavailable: {doc_dir}"
+        ) from exc
     documents = []
     supported = {".txt", ".md", ".pdf", ".docx"}
 
@@ -107,6 +118,22 @@ def load_documents(doc_dir: Path) -> List[dict]:
     print(f"  Found {len(all_files)} files total")
 
     for file_path in all_files:
+        if file_path.is_symlink():
+            print(f"  [SKIP] {file_path.relative_to(doc_dir)} - symlink input")
+            continue
+        relative_path = file_path.relative_to(doc_dir)
+        if any(
+            parent != doc_dir and parent.is_symlink()
+            for parent in file_path.parents
+            if parent == doc_dir or doc_dir in parent.parents
+        ):
+            print(f"  [SKIP] {relative_path} - symlinked parent")
+            continue
+        try:
+            file_path.resolve(strict=True).relative_to(resolved_doc_dir)
+        except (OSError, ValueError):
+            print(f"  [SKIP] {relative_path} - outside document directory")
+            continue
         if file_path.suffix.lower() not in supported:
             continue
         if file_path.name.startswith("~") or file_path.name.startswith("."):
@@ -122,9 +149,19 @@ def load_documents(doc_dir: Path) -> List[dict]:
                 text = read_text_file(file_path)
 
             if text.strip():
-                rel_path = str(file_path.relative_to(doc_dir))
+                rel_path = file_path.relative_to(doc_dir).as_posix()
+                source_parts = rel_path.split("/")
+                source_type = source_parts[0] if len(source_parts) > 1 else None
                 documents.append(
-                    {"file": rel_path, "text": text, "char_count": len(text)}
+                    {
+                        "file": rel_path,
+                        "text": text,
+                        "char_count": len(text),
+                        "document_checksum": hashlib.sha256(
+                            file_path.read_bytes()
+                        ).hexdigest(),
+                        "source_type": source_type,
+                    }
                 )
                 print(f"  [OK] {rel_path} ({len(text)} chars)")
         except Exception as e:
@@ -147,88 +184,120 @@ def clean_text(text: str) -> str:
 # ---- Step 3: Chunking ----
 
 
+@dataclass(frozen=True)
+class _TextSegment:
+    start: int
+    end: int
+
+
+_SEGMENT_BOUNDARY_PATTERN = re.compile(
+    r"\n{2,}|[。！？!?]+|(?<!\d)\.(?!\d)"
+)
+
+
+def _offset_segments(text: str) -> List[_TextSegment]:
+    """Represent semantic boundary candidates using original character spans."""
+    segments: List[_TextSegment] = []
+    cursor = 0
+    for match in _SEGMENT_BOUNDARY_PATTERN.finditer(text):
+        boundary = match.end()
+        if boundary > cursor:
+            segments.append(_TextSegment(start=cursor, end=boundary))
+            cursor = boundary
+    if cursor < len(text):
+        segments.append(_TextSegment(start=cursor, end=len(text)))
+    return segments
+
+
 def chunk_text(
-    text: str, source_file: str, chunk_size: int = 600, overlap: int = 100
+    text: str,
+    source_file: str,
+    chunk_size: int = 600,
+    overlap: int = 100,
+    *,
+    document_checksum: str | None = None,
+    source_type: str | None = None,
 ) -> List[dict]:
-    """Split text into semantic chunks by paragraph, with overlap."""
-    chunks = []
-    paragraphs = text.split("\n\n")
+    """Split exact source spans using semantic ends and bounded overlap windows."""
+    if isinstance(chunk_size, bool) or not isinstance(chunk_size, int):
+        raise ValueError("chunk_size must be a positive integer")
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be a positive integer")
+    if (
+        isinstance(overlap, bool)
+        or not isinstance(overlap, int)
+        or overlap < 0
+        or overlap >= chunk_size
+    ):
+        raise ValueError("overlap must be an integer from 0 to chunk_size - 1")
+    if not text:
+        return []
 
-    current_chunk = ""
-    current_start = 0
-    position = 0
-
-    for para in paragraphs:
-        para = para.strip()
-        if not para:
-            continue
-
-        if len(current_chunk) + len(para) <= chunk_size:
-            current_chunk = f"{current_chunk}\n\n{para}" if current_chunk else para
-            if not current_chunk:
-                current_start = position
-        else:
-            if current_chunk.strip():
-                chunks.append(
-                    {
-                        "text": current_chunk.strip(),
-                        "source": source_file,
-                        "start_pos": current_start,
-                        "char_count": len(current_chunk),
-                    }
-                )
-
-            if len(para) > chunk_size:
-                for sub in split_long_paragraph(para, chunk_size):
-                    chunks.append(
-                        {
-                            "text": sub,
-                            "source": source_file,
-                            "start_pos": position,
-                            "char_count": len(sub),
-                        }
-                    )
-                current_chunk = ""
-            else:
-                current_chunk = para
-                current_start = position
-
-        position += len(para) + 2
-
-    if current_chunk.strip():
+    segments = _offset_segments(text)
+    preferred_ends = tuple(segment.end for segment in segments)
+    chunks: List[dict] = []
+    start = 0
+    previous_end = 0
+    while start < len(text):
+        hard_end = min(start + chunk_size, len(text))
+        semantic_ends = [
+            end
+            for end in preferred_ends
+            if previous_end < end <= hard_end
+        ]
+        end = max(semantic_ends) if semantic_ends else hard_end
+        if end <= previous_end or end <= start:
+            raise RuntimeError("chunking did not advance")
+        chunk_value = text[start:end]
         chunks.append(
-            {
-                "text": current_chunk.strip(),
-                "source": source_file,
-                "start_pos": current_start,
-                "char_count": len(current_chunk),
-            }
+            _chunk_metadata(
+                chunk_value,
+                source_file,
+                start,
+                len(chunk_value),
+                document_checksum,
+                source_type,
+            )
         )
-
-    # Add overlap from previous chunk tail
-    for i in range(1, len(chunks)):
-        if overlap > 0 and len(chunks[i - 1]["text"]) > overlap:
-            tail = chunks[i - 1]["text"][-overlap:]
-            chunks[i]["text"] = tail + "\n" + chunks[i]["text"]
-
+        if end == len(text):
+            break
+        previous_end = end
+        start = end - overlap
     return chunks
 
 
+def _chunk_metadata(
+    text: str,
+    source_file: str,
+    start_pos: int,
+    char_count: int,
+    document_checksum: str | None,
+    source_type: str | None,
+) -> dict:
+    chunk = {
+        "text": text,
+        "source": source_file,
+        "start_pos": start_pos,
+        "char_count": char_count,
+    }
+    if document_checksum is not None:
+        chunk["document_checksum"] = document_checksum
+    if source_type is not None:
+        chunk["source_type"] = source_type
+    return chunk
+
+
 def split_long_paragraph(para: str, max_len: int) -> List[str]:
-    """Split oversized paragraph by sentences."""
-    sentences = re.split(r"(?<=[。！？.!?])\s*", para)
-    result = []
-    current = ""
-    for sent in sentences:
-        if len(current) + len(sent) <= max_len:
-            current += sent
-        else:
-            if current:
-                result.append(current.strip())
-            current = sent
-    if current:
-        result.append(current.strip())
-    return result
+    """Compatibility helper returning the bounded exact spans for one paragraph."""
+    return [
+        item["text"]
+        for item in chunk_text(
+            para,
+            "",
+            chunk_size=max_len,
+            overlap=0,
+        )
+    ]
 
 
 # ---- Step 4: Embedding API ----
@@ -350,23 +419,14 @@ class EmbeddingClient:
 
 def embed_all_chunks(chunks: List[dict], client: EmbeddingClient) -> List[dict]:
     """Vectorize all chunks using the Embedding API."""
-    failed_count = 0
-
     for i, chunk in enumerate(tqdm(chunks, desc="Vectorizing")):
         try:
             chunk["embedding"] = client.embed(chunk["text"], domain="para")
         except Exception as e:
-            print(f"\n  [FAIL] chunk {i}: {str(e)[:100]}")
-            chunk["embedding"] = np.zeros(2560, dtype=np.float32)
-            failed_count += 1
+            raise RuntimeError(f"embedding failed for chunk {i}") from e
 
         if (i + 1) % 50 == 0:
             time.sleep(0.5)  # Rate limiting every 50 chunks
-
-    if failed_count > 0:
-        print(
-            f"\n  [WARN] {failed_count}/{len(chunks)} chunks failed, using zero vectors"
-        )
 
     return chunks
 
@@ -378,7 +438,21 @@ def build_index(chunks: List[dict]) -> Tuple:
     """Build nearest-neighbor index from embedding vectors using sklearn."""
     from sklearn.neighbors import NearestNeighbors
 
-    vectors = np.array([c["embedding"] for c in chunks]).astype("float32")
+    if not chunks:
+        raise RuntimeError("embedding collection is empty")
+    try:
+        vectors = np.stack(
+            [np.asarray(c["embedding"], dtype=np.float32) for c in chunks]
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("embedding vectors are malformed") from exc
+    if (
+        vectors.ndim != 2
+        or vectors.shape[1] == 0
+        or not np.isfinite(vectors).all()
+        or np.any(np.linalg.norm(vectors, axis=1) == 0)
+    ):
+        raise RuntimeError("embedding vectors are invalid")
 
     # L2 normalize for cosine similarity
     from sklearn.preprocessing import normalize
@@ -386,7 +460,11 @@ def build_index(chunks: List[dict]) -> Tuple:
     vectors = normalize(vectors, norm="l2")
 
     # Brute-force NN with cosine metric (uses normalized vectors internally)
-    nbrs = NearestNeighbors(n_neighbors=10, metric="cosine", algorithm="brute")
+    nbrs = NearestNeighbors(
+        n_neighbors=min(10, len(chunks)),
+        metric="cosine",
+        algorithm="brute",
+    )
     nbrs.fit(vectors)
 
     print(f"  Vectors: {len(chunks)}, Dim: {vectors.shape[1]}, Metric: cosine")
@@ -400,14 +478,7 @@ def save_index(nbrs, chunks: List[dict], output_dir: Path):
 
     metadata = []
     for c in chunks:
-        metadata.append(
-            {
-                "text": c["text"],
-                "source": c["source"],
-                "start_pos": c.get("start_pos", 0),
-                "char_count": c.get("char_count", len(c["text"])),
-            }
-        )
+        metadata.append({key: value for key, value in c.items() if key != "embedding"})
 
     with open(output_dir / "chunks_metadata.json", "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=2)
@@ -416,6 +487,111 @@ def save_index(nbrs, chunks: List[dict], output_dir: Path):
     meta_size = os.path.getsize(output_dir / "chunks_metadata.json") / 1024
     print(f"  vectors.npy ({vec_size:.1f} MB)")
     print(f"  chunks_metadata.json ({meta_size:.1f} KB)")
+
+
+def publish_vector_store(nbrs, chunks: List[dict], output_dir: Path) -> None:
+    """Validate a complete sibling staging directory before replacing the store."""
+    from app.rag.vector_store import VectorStore
+
+    output_dir = Path(output_dir)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    backup_dir = output_dir.parent / f".{output_dir.name}.backup"
+    failed_dir = output_dir.parent / f".{output_dir.name}.failed"
+    if backup_dir.exists():
+        raise RuntimeError(
+            "recoverable vector-store backup already exists at "
+            f"{backup_dir}; inspect it before publishing"
+        )
+    if failed_dir.exists():
+        raise RuntimeError(
+            f"failed vector-store debris already exists at {failed_dir}"
+        )
+    staging_dir = Path(
+        tempfile.mkdtemp(
+            prefix=f".{output_dir.name}.staging-",
+            dir=output_dir.parent,
+        )
+    )
+    moved_old_store = False
+    try:
+        save_index(nbrs, chunks, staging_dir)
+        VectorStore.load(staging_dir)
+        if output_dir.exists():
+            os.replace(output_dir, backup_dir)
+            moved_old_store = True
+        try:
+            os.replace(staging_dir, output_dir)
+        except Exception:
+            if moved_old_store:
+                try:
+                    os.replace(backup_dir, output_dir)
+                    moved_old_store = False
+                except Exception as restore_error:
+                    raise RuntimeError(
+                        "vector-store activation and rollback failed; "
+                        "recover the previous store from "
+                        f"{backup_dir}"
+                    ) from restore_error
+            raise
+        try:
+            VectorStore.load(output_dir)
+        except Exception as validation_error:
+            try:
+                os.replace(output_dir, failed_dir)
+            except Exception as quarantine_error:
+                recovery = (
+                    f"; recover the previous store from {backup_dir}"
+                    if moved_old_store
+                    else ""
+                )
+                raise RuntimeError(
+                    "active vector store failed validation and could not be "
+                    f"quarantined{recovery}"
+                ) from quarantine_error
+            if moved_old_store:
+                try:
+                    os.replace(backup_dir, output_dir)
+                    moved_old_store = False
+                except Exception as restore_error:
+                    raise RuntimeError(
+                        "active vector store failed validation and rollback "
+                        "failed; recover the previous store from "
+                        f"{backup_dir}"
+                    ) from restore_error
+            try:
+                shutil.rmtree(failed_dir)
+            except Exception as cleanup_error:
+                warnings.warn(
+                    "failed vector-store debris remains at "
+                    f"{failed_dir}: {cleanup_error}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+            raise RuntimeError(
+                "activated vector store failed validation"
+            ) from validation_error
+        if moved_old_store:
+            try:
+                shutil.rmtree(backup_dir)
+                moved_old_store = False
+            except Exception as cleanup_error:
+                warnings.warn(
+                    "recoverable backup remains at "
+                    f"{backup_dir}: {cleanup_error}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+    finally:
+        if staging_dir.exists():
+            try:
+                shutil.rmtree(staging_dir)
+            except Exception as cleanup_error:
+                warnings.warn(
+                    "staging debris remains at "
+                    f"{staging_dir}: {cleanup_error}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
 
 
 # ---- Step 6: Search Verification ----
@@ -455,6 +631,20 @@ def search_test(
 
 
 def main():
+    missing = [
+        name
+        for name, value in {
+            "XF_APP_ID": APP_ID,
+            "XF_EMBEDDING_API_KEY": API_KEY,
+            "XF_EMBEDDING_API_SECRET": API_SECRET,
+        }.items()
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(
+            "Missing required environment variables: " + ", ".join(missing)
+        )
+
     print("=" * 60)
     print("  Knowledge Base Vectorization Pipeline")
     print("=" * 60)
@@ -479,7 +669,14 @@ def main():
     print(f"\n[Step 3] Chunking (size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})...")
     all_chunks = []
     for doc in documents:
-        chunks = chunk_text(doc["text"], doc["file"], CHUNK_SIZE, CHUNK_OVERLAP)
+        chunks = chunk_text(
+            doc["text"],
+            doc["file"],
+            CHUNK_SIZE,
+            CHUNK_OVERLAP,
+            document_checksum=doc["document_checksum"],
+            source_type=doc.get("source_type"),
+        )
         all_chunks.extend(chunks)
     print(f"  Generated {len(all_chunks)} chunks")
 
@@ -502,12 +699,16 @@ def main():
     # Step 5: Build index
     print("\n[Step 5] Building vector index (sklearn)...")
     nbrs, chunks = build_index(all_chunks)
-    save_index(nbrs, chunks, OUTPUT_DIR)
+    publish_vector_store(nbrs, chunks, OUTPUT_DIR)
     print(f"  Saved to: {OUTPUT_DIR.absolute()}")
 
     # Step 6: Search verification
     print("\n[Step 6] Search verification...")
     print("  Enter test queries (type 'quit' to exit)")
+
+    if os.environ.get("SKIP_VECTOR_SEARCH") == "1":
+        print("  Search verification skipped by SKIP_VECTOR_SEARCH=1")
+        return
 
     while True:
         try:

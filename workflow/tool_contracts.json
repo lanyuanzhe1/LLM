@@ -1,0 +1,1158 @@
+{
+  "name": "粮储智研助手技术实体_v1",
+  "start_parameters": [
+    "AGENT_USER_INPUT",
+    "REQUEST_ID",
+    "SESSION_ID",
+    "USER_ROLE",
+    "TASK_TYPE",
+    "CASE_JSON"
+  ],
+  "authentication": {
+    "header": "Authorization",
+    "value": "Bearer ${TOOLS_SERVICE_TOKEN}"
+  },
+  "tools": [
+    {
+      "name": "grain_retrieve",
+      "method": "POST",
+      "path": "/tools/v1/retrieve",
+      "request_fields": [
+        "request_id",
+        "query",
+        "top_k",
+        "filters"
+      ],
+      "response_fields": [
+        "request_id",
+        "query",
+        "evidences",
+        "quality"
+      ],
+      "request_schema": {
+        "$defs": {
+          "RetrievalFilters": {
+            "additionalProperties": false,
+            "properties": {
+              "source_type": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Source Type"
+              },
+              "authority_level": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Authority Level"
+              }
+            },
+            "title": "RetrievalFilters",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "top_k": {
+            "default": 5,
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/$defs/RetrievalFilters"
+          }
+        },
+        "required": [
+          "request_id",
+          "query"
+        ],
+        "title": "RetrieveRequest",
+        "type": "object"
+      },
+      "response_schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Evidence Id",
+                "type": "string"
+              },
+              "document_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Document Id",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 512,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "title": "Source",
+                "type": "string"
+              },
+              "page": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Page"
+              },
+              "section": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Section"
+              },
+              "article_no": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Article No"
+              },
+              "text": {
+                "maxLength": 32000,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              },
+              "score": {
+                "anyOf": [
+                  {
+                    "maximum": 1.0,
+                    "minimum": -1.0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Score"
+              },
+              "authority_level": {
+                "default": "unknown",
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "Authority Level",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              },
+              "quality_flags": {
+                "items": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "title": "Quality Flags",
+                "type": "array"
+              }
+            },
+            "required": [
+              "evidence_id",
+              "document_id",
+              "title",
+              "source",
+              "text",
+              "score"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "RetrievalQuality": {
+            "properties": {
+              "top_score": {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "title": "Top Score",
+                "type": "number"
+              },
+              "sufficient": {
+                "title": "Sufficient",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "top_score",
+              "sufficient"
+            ],
+            "title": "RetrievalQuality",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "maxItems": 20,
+            "title": "Evidences",
+            "type": "array"
+          },
+          "quality": {
+            "$ref": "#/$defs/RetrievalQuality"
+          }
+        },
+        "required": [
+          "request_id",
+          "query",
+          "evidences",
+          "quality"
+        ],
+        "title": "RetrieveResponse",
+        "type": "object"
+      }
+    },
+    {
+      "name": "grain_generate",
+      "method": "POST",
+      "path": "/tools/v1/generate",
+      "request_fields": [
+        "request_id",
+        "question",
+        "role",
+        "task_type",
+        "evidences",
+        "validation_feedback"
+      ],
+      "response_fields": [
+        "request_id",
+        "answer",
+        "cited_evidence_ids",
+        "usage"
+      ],
+      "request_schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Evidence Id",
+                "type": "string"
+              },
+              "document_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Document Id",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 512,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "title": "Source",
+                "type": "string"
+              },
+              "page": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Page"
+              },
+              "section": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Section"
+              },
+              "article_no": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Article No"
+              },
+              "text": {
+                "maxLength": 32000,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              },
+              "score": {
+                "anyOf": [
+                  {
+                    "maximum": 1.0,
+                    "minimum": -1.0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Score"
+              },
+              "authority_level": {
+                "default": "unknown",
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "Authority Level",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              },
+              "quality_flags": {
+                "items": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "title": "Quality Flags",
+                "type": "array"
+              }
+            },
+            "required": [
+              "evidence_id",
+              "document_id",
+              "title",
+              "source",
+              "text",
+              "score"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          },
+          "Role": {
+            "enum": [
+              "student",
+              "teacher",
+              "researcher",
+              "technician"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/$defs/Role",
+            "default": "student"
+          },
+          "task_type": {
+            "default": "knowledge_qa",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Type",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Evidences",
+            "type": "array"
+          },
+          "validation_feedback": {
+            "items": {
+              "maxLength": 32000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Validation Feedback",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "question",
+          "evidences"
+        ],
+        "title": "GenerateRequest",
+        "type": "object"
+      },
+      "response_schema": {
+        "$defs": {
+          "GenerationUsage": {
+            "properties": {
+              "total_tokens": {
+                "default": 0,
+                "minimum": 0,
+                "title": "Total Tokens",
+                "type": "integer"
+              }
+            },
+            "title": "GenerationUsage",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "answer": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "cited_evidence_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Cited Evidence Ids",
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/$defs/GenerationUsage"
+          }
+        },
+        "required": [
+          "request_id",
+          "answer",
+          "cited_evidence_ids"
+        ],
+        "title": "GenerateResponse",
+        "type": "object"
+      }
+    },
+    {
+      "name": "grain_case_evaluate",
+      "method": "POST",
+      "path": "/tools/v1/cases/evaluate",
+      "request_fields": [
+        "request_id",
+        "case"
+      ],
+      "response_fields": [
+        "request_id",
+        "needs_input",
+        "missing_fields",
+        "question",
+        "rules"
+      ],
+      "request_schema": {
+        "$defs": {
+          "CaseData": {
+            "additionalProperties": false,
+            "properties": {
+              "grain_type": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Grain Type"
+              },
+              "storage_type": {
+                "anyOf": [
+                  {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Storage Type"
+              },
+              "moisture_percent": {
+                "anyOf": [
+                  {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Moisture Percent"
+              },
+              "grain_temperature_c": {
+                "anyOf": [
+                  {
+                    "maximum": 100,
+                    "minimum": -50,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Grain Temperature C"
+              },
+              "temperature_trend": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "rising",
+                      "stable",
+                      "falling"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Temperature Trend"
+              },
+              "ambient_temperature_c": {
+                "anyOf": [
+                  {
+                    "maximum": 100,
+                    "minimum": -50,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ambient Temperature C"
+              },
+              "ambient_humidity_percent": {
+                "anyOf": [
+                  {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Ambient Humidity Percent"
+              },
+              "co2_ppm": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Co2 Ppm"
+              },
+              "co2_trend": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "rising",
+                      "stable",
+                      "falling"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Co2 Trend"
+              },
+              "pest_signs": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pest Signs"
+              },
+              "mold_signs": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Mold Signs"
+              },
+              "condensation_signs": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Condensation Signs"
+              },
+              "storage_days": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Storage Days"
+              },
+              "goal": {
+                "anyOf": [
+                  {
+                    "maxLength": 1000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Goal"
+              }
+            },
+            "title": "CaseData",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "case": {
+            "$ref": "#/$defs/CaseData"
+          }
+        },
+        "required": [
+          "request_id",
+          "case"
+        ],
+        "title": "CaseEvaluateRequest",
+        "type": "object"
+      },
+      "response_schema": {
+        "$defs": {
+          "RuleResult": {
+            "properties": {
+              "rule_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Rule Id",
+                "type": "string"
+              },
+              "conclusion": {
+                "maxLength": 32000,
+                "minLength": 1,
+                "title": "Conclusion",
+                "type": "string"
+              },
+              "evidence_ids": {
+                "items": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "title": "Evidence Ids",
+                "type": "array"
+              },
+              "conditions": {
+                "additionalProperties": true,
+                "maxProperties": 20,
+                "title": "Conditions",
+                "type": "object"
+              }
+            },
+            "required": [
+              "rule_id",
+              "conclusion",
+              "evidence_ids",
+              "conditions"
+            ],
+            "title": "RuleResult",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "needs_input": {
+            "title": "Needs Input",
+            "type": "boolean"
+          },
+          "missing_fields": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "maxLength": 32000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Question"
+          },
+          "rules": {
+            "items": {
+              "$ref": "#/$defs/RuleResult"
+            },
+            "maxItems": 20,
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "needs_input",
+          "missing_fields"
+        ],
+        "title": "CaseEvaluateResponse",
+        "type": "object"
+      }
+    },
+    {
+      "name": "grain_citation_validate",
+      "method": "POST",
+      "path": "/tools/v1/citations/validate",
+      "request_fields": [
+        "request_id",
+        "answer",
+        "evidences"
+      ],
+      "response_fields": [
+        "request_id",
+        "valid",
+        "errors",
+        "unsupported_sentences",
+        "citation_ids",
+        "coverage"
+      ],
+      "request_schema": {
+        "$defs": {
+          "Evidence": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Evidence Id",
+                "type": "string"
+              },
+              "document_id": {
+                "maxLength": 128,
+                "minLength": 1,
+                "title": "Document Id",
+                "type": "string"
+              },
+              "title": {
+                "maxLength": 512,
+                "minLength": 1,
+                "title": "Title",
+                "type": "string"
+              },
+              "source": {
+                "maxLength": 1024,
+                "minLength": 1,
+                "title": "Source",
+                "type": "string"
+              },
+              "page": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Page"
+              },
+              "section": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Section"
+              },
+              "article_no": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Article No"
+              },
+              "text": {
+                "maxLength": 32000,
+                "minLength": 1,
+                "title": "Text",
+                "type": "string"
+              },
+              "score": {
+                "anyOf": [
+                  {
+                    "maximum": 1.0,
+                    "minimum": -1.0,
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Score"
+              },
+              "authority_level": {
+                "default": "unknown",
+                "maxLength": 256,
+                "minLength": 1,
+                "title": "Authority Level",
+                "type": "string"
+              },
+              "version": {
+                "anyOf": [
+                  {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Version"
+              },
+              "quality_flags": {
+                "items": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "maxItems": 20,
+                "title": "Quality Flags",
+                "type": "array"
+              }
+            },
+            "required": [
+              "evidence_id",
+              "document_id",
+              "title",
+              "source",
+              "text",
+              "score"
+            ],
+            "title": "Evidence",
+            "type": "object"
+          }
+        },
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "answer": {
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "evidences": {
+            "items": {
+              "$ref": "#/$defs/Evidence"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Evidences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "answer",
+          "evidences"
+        ],
+        "title": "CitationValidateRequest",
+        "type": "object"
+      },
+      "response_schema": {
+        "$defs": {
+          "CitationCoverage": {
+            "properties": {
+              "total_sentences": {
+                "minimum": 0,
+                "title": "Total Sentences",
+                "type": "integer"
+              },
+              "cited_sentences": {
+                "minimum": 0,
+                "title": "Cited Sentences",
+                "type": "integer"
+              },
+              "ratio": {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "title": "Ratio",
+                "type": "number"
+              }
+            },
+            "required": [
+              "total_sentences",
+              "cited_sentences",
+              "ratio"
+            ],
+            "title": "CitationCoverage",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "request_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Request Id",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "errors": {
+            "items": {
+              "maxLength": 32000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Errors",
+            "type": "array"
+          },
+          "unsupported_sentences": {
+            "items": {
+              "maxLength": 32000,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Unsupported Sentences",
+            "type": "array"
+          },
+          "citation_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Citation Ids",
+            "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/$defs/CitationCoverage"
+          }
+        },
+        "required": [
+          "request_id",
+          "valid",
+          "errors",
+          "unsupported_sentences",
+          "citation_ids"
+        ],
+        "title": "CitationValidateResponse",
+        "type": "object"
+      }
+    }
+  ]
+}
