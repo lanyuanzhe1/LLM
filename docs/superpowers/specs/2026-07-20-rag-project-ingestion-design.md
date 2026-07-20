@@ -12,7 +12,16 @@ Build a development-stage ingestion loop for project-scoped RAG knowledge:
 4. Retrieval for a project uses the built-in base knowledge plus that project only.
 5. Other projects' uploaded documents are not visible during retrieval.
 
-This design covers PDF, PPTX, DOCX, TXT, and Markdown. Legacy binary PPT and OCR for scanned/image-only files are out of scope for this iteration.
+This design covers PDF, DOCX, TXT, and Markdown. PPTX, legacy binary PPT, and OCR for scanned/image-only files are out of scope for v1.
+
+## Design Philosophy
+
+The ingestion pipeline follows a thin-local, heavy-model principle:
+
+- **Local code does format routing and lightweight text extraction only.** It opens a file, pulls out whatever text is trivially available, and hands it to the embedding model. It does not attempt semantic cleaning, table reconstruction, layout analysis, or OCR.
+- **The iFlytek Embedding model is the core intelligence.** It handles varying text quality, mixed formatting, fragmented bullet points, and noise — capabilities that local heuristic code cannot match. Chunking exists only to stay within the model's token window, not to "improve" the text.
+- **Don't fix bad input locally — let the model handle it.** If extracted text is messy, the embedding model still produces a valid 2560-dim vector that participates in cosine search. Bad text yields low-relevance scores at query time, which is the correct failure mode.
+- **No local NLP, no hand-crafted cleaning rules.** The pipeline avoids introducing bias or information loss through well-intentioned but brittle local transformations.
 
 ## Open-Source Cases Reviewed
 
@@ -105,17 +114,19 @@ Pipeline stages:
 
 1. Resolve scope.
 2. Validate filesystem boundary and skip symlinks.
-3. Parse supported formats:
+3. Parse supported formats with lightweight extraction only:
    - PDF: PyMuPDF text extraction.
-   - PPTX: `python-pptx` text extraction from slide shapes, tables, and notes when available.
    - DOCX: `python-docx` paragraphs and tables.
    - TXT and Markdown: UTF-8 text reader with `errors="ignore"` matching current behavior.
+   - Unsupported extensions (`.ppt`, `.pptx`, images): skip with report entry.
+   - Supported format but extracted zero text (e.g. scanned PDF): skip with report entry.
+   - No local text cleaning, layout reconstruction, or semantic preprocessing.
 4. Clean and chunk text with the existing chunking rules.
 5. Calculate SHA-256 for every source file.
 6. Reuse previous embeddings for unchanged documents whose parser version, chunking config, and embedding model config still match the manifest.
 7. Embed only new or changed chunks.
 8. Rebuild a complete sklearn index for that scope from reused and newly embedded vectors.
-9. Publish to a staging directory, validate with `VectorStore.load()`, then atomically swap the active directory.
+9. Write vectors.npy and chunks_metadata.json to a staging directory, then atomically swap into the active store path. The Embedding model either returns valid 2560-dim vectors or errors — no additional local validation of the written artifacts is needed.
 10. Write `manifest.json` and `ingest_report.json` into the published store.
 
 ## Incremental State
@@ -202,7 +213,7 @@ The ingestion script exits non-zero when:
 - the file extension is unsupported;
 - every candidate file fails parsing or produces empty text;
 - embedding fails after retries;
-- atomic publish validation fails.
+- failed to write final vector artifacts to disk.
 
 The script exits zero with warnings when at least one document publishes successfully and some files are skipped. `ingest_report.json` records:
 
@@ -222,13 +233,13 @@ Unit tests:
 - project ID validation rejects path traversal, slashes, absolute paths, blank IDs, and hidden names;
 - scanner excludes `knowledge/projects/` when building base;
 - scanner includes only the selected project for project ingestion;
-- parser routes `.pdf`, `.pptx`, `.docx`, `.txt`, and `.md`;
-- unsupported `.ppt` and image-only/empty files are skipped with report entries;
+- parser routes `.pdf`, `.docx`, `.txt`, and `.md`;
+- unsupported `.ppt`, `.pptx`, and image-only/empty files are skipped with report entries;
 - unchanged file hashes reuse embeddings;
 - changed files re-embed only changed documents;
 - deleted files disappear from the new metadata;
 - manifest mismatch forces re-embedding;
-- atomic publish preserves the previous active store on validation failure;
+- delete all files for a scope and rebuild produces a fresh store (no stale chunks);
 - retriever for project A never returns project B chunks.
 
 Contract and integration tests:
@@ -245,12 +256,14 @@ Online tests:
 
 ## Non-Goals
 
+- No PPTX parsing in this iteration.
+- No legacy binary `.ppt` parsing in this iteration.
+- No OCR for scanned/image-only documents in this iteration.
 - No login or production authorization module in this iteration.
 - No browser upload UI in this iteration.
-- No old `.ppt` parser in this iteration.
-- No OCR in this iteration.
 - No vector database migration in this iteration.
 - No hot reload requirement. Newly published stores become visible after service restart in v1; a later iteration can add safe reload endpoints or file watchers.
+- No local NLP-based text cleaning, table reconstruction, or semantic preprocessing. The embedding model handles text quality.
 
 ## Implementation Boundary
 
