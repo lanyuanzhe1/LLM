@@ -36,6 +36,7 @@ class ChatRequest(StrictPublicRequest):
         max_length=128,
     )
     role: Role = Role.STUDENT
+    project_id: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class CaseData(StrictPublicRequest):
@@ -88,3 +89,4 @@ class CaseAnalyzeRequest(StrictPublicRequest):
     )
     role: Role = Role.TECHNICIAN
     case: CaseData
+    project_id: str | None = Field(default=None, min_length=1, max_length=64)

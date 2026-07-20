@@ -6,7 +6,8 @@
     "SESSION_ID",
     "USER_ROLE",
     "TASK_TYPE",
-    "CASE_JSON"
+    "CASE_JSON",
+    "PROJECT_ID"
   ],
   "authentication": {
     "header": "Authorization",
@@ -21,7 +22,8 @@
         "request_id",
         "query",
         "top_k",
-        "filters"
+        "filters",
+        "project_id"
       ],
       "response_fields": [
         "request_id",
@@ -90,6 +92,20 @@
           },
           "filters": {
             "$ref": "#/$defs/RetrievalFilters"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
           }
         },
         "required": [

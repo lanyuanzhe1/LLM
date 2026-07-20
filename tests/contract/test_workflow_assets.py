@@ -35,6 +35,7 @@ def test_workflow_contract_has_exact_inputs_authentication_and_tools():
         "USER_ROLE",
         "TASK_TYPE",
         "CASE_JSON",
+        "PROJECT_ID",
     ]
     assert contract["authentication"] == {
         "header": "Authorization",

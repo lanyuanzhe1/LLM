@@ -451,6 +451,7 @@ async def test_gateway_preserves_explicit_correlation_and_exact_case_parameters(
                     case.model_dump(mode="json"),
                     ensure_ascii=False,
                 ),
+                "PROJECT_ID": "",
             },
             "explicit-user",
         )

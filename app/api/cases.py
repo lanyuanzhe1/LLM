@@ -28,6 +28,7 @@ async def analyze(
             role=payload.role,
             task_type="case_analysis",
             case=payload.case,
+            project_id=payload.project_id,
         ),
         media_type="text/event-stream",
         headers={

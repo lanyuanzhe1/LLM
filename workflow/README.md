@@ -8,7 +8,7 @@ export 尚未发布，须按以下映射在平台创建并在线发布后取得 
 
 ## 开始节点
 
-按字符串类型创建六个输入：
+按字符串类型创建七个输入：
 
 1. `AGENT_USER_INPUT`
 2. `REQUEST_ID`
@@ -16,6 +16,7 @@ export 尚未发布，须按以下映射在平台创建并在线发布后取得 
 4. `USER_ROLE`
 5. `TASK_TYPE`
 6. `CASE_JSON`
+7. `PROJECT_ID`
 
 ## 节点与分支
 
@@ -49,7 +50,7 @@ export 尚未发布，须按以下映射在平台创建并在线发布后取得 
 
 | 工具 | 请求映射 | 供后续节点使用的响应映射 |
 | --- | --- | --- |
-| `grain_retrieve` | `request_id`、`query`、`top_k`，以及对象 `filters` | 数组 `evidences` 原样传给生成和验证节点；对象 `quality.sufficient` 用于证据不足分支。 |
+| `grain_retrieve` | `request_id`、`query`、`top_k`、`project_id`，以及对象 `filters` | 数组 `evidences` 原样传给生成和验证节点；对象 `quality.sufficient` 用于证据不足分支。 |
 | `grain_generate` | `request_id`、`question`、`role`、`task_type`、数组 `evidences`、数组 `validation_feedback` | `answer` 传给验证节点；保留 `cited_evidence_ids` 与对象 `usage`。 |
 | `grain_case_evaluate` | `request_id` 与对象 `case`（将 `CASE_JSON` 解析为对象） | 使用 `needs_input`、`missing_fields`、`question`；数组 `rules` 中每项保留 `conditions` 对象。 |
 | `grain_citation_validate` | `request_id`、`answer`、数组 `evidences` | 使用 `valid`、`errors`、`unsupported_sentences`、`citation_ids`，并记录对象 `coverage.total_sentences`、`coverage.cited_sentences`、`coverage.ratio`。 |

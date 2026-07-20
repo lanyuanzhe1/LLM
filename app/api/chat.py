@@ -24,6 +24,7 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
             user_id=payload.user_id,
             role=payload.role,
             task_type="knowledge_qa",
+            project_id=payload.project_id,
         ),
         media_type="text/event-stream",
         headers={

@@ -36,6 +36,7 @@ class RetrieveRequest(StrictToolRequest):
     query: QueryText
     top_k: StrictInteger = Field(default=5, ge=1, le=20)
     filters: RetrievalFilters = Field(default_factory=RetrievalFilters)
+    project_id: ShortText | None = None
 
 
 class RetrievalQuality(ResponseModel):

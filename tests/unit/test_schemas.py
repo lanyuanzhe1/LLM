@@ -482,3 +482,34 @@ def test_case_domain_floats_must_be_finite(field, value):
 def test_overflowing_json_float_cannot_enter_case_serialization():
     with pytest.raises(ValidationError):
         CaseData.model_validate_json('{"co2_ppm":1e309}')
+
+
+def test_chat_request_accepts_project_id():
+    request = ChatRequest(message="test", project_id="demo")
+    assert request.project_id == "demo"
+
+
+def test_chat_request_project_id_defaults_none():
+    request = ChatRequest(message="test")
+    assert request.project_id is None
+
+
+def test_chat_request_project_id_rejects_invalid():
+    with pytest.raises(ValidationError):
+        ChatRequest(message="test", project_id="")
+
+
+def test_retrieve_request_accepts_project_id():
+    from app.schemas.tools import RetrieveRequest
+    request = RetrieveRequest(request_id="req", query="q", project_id="demo")
+    assert request.project_id == "demo"
+
+
+def test_case_analyze_request_accepts_project_id():
+    request = CaseAnalyzeRequest(case=CaseData(grain_type="小麦"), project_id="demo")
+    assert request.project_id == "demo"
+
+
+def test_case_analyze_request_rejects_long_project_id():
+    with pytest.raises(ValidationError):
+        CaseAnalyzeRequest(case=CaseData(grain_type="小麦"), project_id="a" * 65)

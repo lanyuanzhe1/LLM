@@ -54,6 +54,7 @@ class WorkflowGateway:
         role: Role,
         task_type: str,
         case: CaseData | None = None,
+        project_id: str | None = None,
     ) -> AsyncIterator[str]:
         resolved_request_id = request_id or self.id_factory()
         resolved_session_id = session_id or str(uuid.uuid4())
@@ -69,6 +70,7 @@ class WorkflowGateway:
                 if case is not None
                 else ""
             ),
+            "PROJECT_ID": project_id or "",
         }
         context_consumed = False
         terminal_logged = False
