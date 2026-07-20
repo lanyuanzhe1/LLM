@@ -59,7 +59,7 @@ knowledge/
   projects/
     <project_id>/
       uploaded-file.pdf
-      uploaded-slides.pptx
+      uploaded-report.docx
 
 vector_store/
   base/
