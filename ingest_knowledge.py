@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.clients.iflytek_embedding import IflytekEmbeddingClient
+from app.clients.iflytek_pdf_ocr import IflytekPdfOcrClient
+from app.ingest.ocr_extract import OcrTextExtractor
 from app.ingest.reader import SUPPORTED_EXTENSIONS, read_file
 from app.ingest.scanner import (
     ScannedDocument,
@@ -46,8 +48,14 @@ DOC_DIR = Path(os.environ.get("KNOWLEDGE_DIR", "./knowledge"))
 OUTPUT_BASE_DIR = Path(os.environ.get("VECTOR_STORE_DIR", "./vector_store"))
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "600"))
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
-PARSER_VERSION = os.environ.get("PARSER_VERSION", "2026-07-20")
+PARSER_VERSION = os.environ.get("PARSER_VERSION", "2026-07-28")
 SLEEP_INTERVAL = float(os.environ.get("INGEST_SLEEP_INTERVAL", "0.3"))
+PDF_OCR_ENABLED = os.environ.get("PDF_OCR_ENABLED", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
+OCR_CACHE_DIR = Path(os.environ.get("OCR_CACHE_DIR", "./ocr_cache"))
 
 
 # ---- Text cleaning (from build_vector_store.py) ----
@@ -209,6 +217,23 @@ def _collect_preexisting_chunks(
     return reused
 
 
+def _build_ocr_extractor() -> OcrTextExtractor | None:
+    """Build the OCR extractor, or None to use local extraction only.
+
+    Missing credentials degrade to local extraction with a warning rather
+    than aborting ingestion — local parsers are the documented fallback.
+    """
+    if not PDF_OCR_ENABLED:
+        return None
+    app_id = os.environ.get("XF_PDFOCR_APP_ID") or os.environ.get("XF_APP_ID", "")
+    api_secret = os.environ.get("XF_PDFOCR_API_SECRET", "")
+    if not app_id or not api_secret:
+        print("[WARNING] PDF OCR credentials missing; using local extraction only")
+        return None
+    client = IflytekPdfOcrClient(app_id=app_id, api_secret=api_secret)
+    return OcrTextExtractor(client=client, cache_dir=OCR_CACHE_DIR)
+
+
 def run_ingestion(
     *,
     scope: str,
@@ -281,8 +306,10 @@ def run_ingestion(
     else:
         jobs = [(scope, project_id)]
 
+    ocr_extractor = _build_ocr_extractor()
+
     for job_scope, job_project_id in jobs:
-        _ingest_one_scope(job_scope, job_project_id, report)
+        _ingest_one_scope(job_scope, job_project_id, report, ocr=ocr_extractor)
 
     # Finalize
     completed = datetime.now(timezone.utc)
@@ -304,6 +331,8 @@ def _ingest_one_scope(
     scope: str,
     project_id: str | None,
     report: dict,
+    *,
+    ocr: OcrTextExtractor | None = None,
 ) -> None:
     """Ingest a single scope (base or one project)."""
 
@@ -331,7 +360,7 @@ def _ingest_one_scope(
     docs_with_text: list[tuple[ScannedDocument, str]] = []
     for doc in scanned:
         full_path = doc_root / doc.path
-        text = read_file(full_path)
+        text = read_file(full_path, ocr=ocr)
         if text.strip():
             docs_with_text.append((doc, text))
         else:
