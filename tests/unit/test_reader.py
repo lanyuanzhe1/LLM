@@ -10,8 +10,10 @@ from app.ingest.reader import SUPPORTED_EXTENSIONS, read_file
 
 
 class TestSupportedExtensions:
-    def test_supported_extensions_are_v1_scope(self):
-        assert SUPPORTED_EXTENSIONS == frozenset({".pdf", ".docx", ".txt", ".md"})
+    def test_supported_extensions_include_office_formats(self):
+        assert SUPPORTED_EXTENSIONS == frozenset(
+            {".pdf", ".docx", ".txt", ".md", ".ppt", ".pptx"}
+        )
 
 
 class TestTextFiles:
@@ -74,7 +76,55 @@ class TestPdf:
 
 class TestUnsupported:
     def test_unsupported_extension_returns_empty(self, tmp_path):
-        file = tmp_path / "slides.pptx"
+        file = tmp_path / "data.xlsx"
         file.write_text("fake content", encoding="utf-8")
         result = read_file(file)
         assert result == ""
+
+
+class _FakeExtractor:
+    def __init__(self, text: str = "OCR 文本", error: Exception | None = None):
+        self.text = text
+        self.error = error
+        self.calls: list[Path] = []
+
+    def extract(self, path: Path) -> str:
+        self.calls.append(Path(path))
+        if self.error is not None:
+            raise self.error
+        return self.text
+
+
+class TestReadFileWithOcr:
+    def test_ocr_result_preferred_over_local(self, tmp_path):
+        file = tmp_path / "doc.txt"
+        file.write_text("本地文本", encoding="utf-8")
+        extractor = _FakeExtractor(text="OCR 文本")
+        assert read_file(file, ocr=extractor) == "OCR 文本"
+        assert extractor.calls == [file]
+
+    def test_ocr_failure_falls_back_to_local(self, tmp_path):
+        from app.ingest.ocr_extract import OcrExtractionError
+
+        file = tmp_path / "doc.txt"
+        file.write_text("本地文本", encoding="utf-8")
+        extractor = _FakeExtractor(error=OcrExtractionError("boom"))
+        assert read_file(file, ocr=extractor) == "本地文本"
+
+    def test_ocr_not_called_for_unsupported_extension(self, tmp_path):
+        file = tmp_path / "data.xlsx"
+        file.write_text("x", encoding="utf-8")
+        extractor = _FakeExtractor()
+        assert read_file(file, ocr=extractor) == ""
+        assert extractor.calls == []
+
+    def test_pptx_with_ocr_returns_ocr_text(self, tmp_path):
+        file = tmp_path / "slides.pptx"
+        file.write_bytes(b"fake pptx")
+        extractor = _FakeExtractor(text="课件 OCR 文本")
+        assert read_file(file, ocr=extractor) == "课件 OCR 文本"
+
+    def test_pptx_without_ocr_returns_empty(self, tmp_path):
+        file = tmp_path / "slides.pptx"
+        file.write_bytes(b"fake pptx")
+        assert read_file(file) == ""
