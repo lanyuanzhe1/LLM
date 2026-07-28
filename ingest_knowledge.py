@@ -49,7 +49,7 @@ OUTPUT_BASE_DIR = Path(os.environ.get("VECTOR_STORE_DIR", "./vector_store"))
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "600"))
 CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "100"))
 PARSER_VERSION = os.environ.get("PARSER_VERSION", "2026-07-28")
-SLEEP_INTERVAL = float(os.environ.get("INGEST_SLEEP_INTERVAL", "0.3"))
+SLEEP_INTERVAL = float(os.environ.get("INGEST_SLEEP_INTERVAL", "1.1"))
 PDF_OCR_ENABLED = os.environ.get("PDF_OCR_ENABLED", "1").strip().lower() not in (
     "0",
     "false",
@@ -179,11 +179,18 @@ def _embed_batch(
     import time as _time
 
     async def _embed_all():
-        for i, c in enumerate(chunks):
-            vec = await client.embed(c["text"], domain="para")
-            c["embedding"] = vec
-            if (i + 1) % 50 == 0:
-                _time.sleep(0.5)
+        try:
+            for i, c in enumerate(chunks):
+                vec = await client.embed(c["text"], domain="para")
+                c["embedding"] = vec
+                # Provider enforces a low per-second concurrency quota
+                # (rapid requests fail with code 11202 "licc failed").
+                _time.sleep(SLEEP_INTERVAL)
+        finally:
+            # Close inside the same event loop: closing from a second
+            # asyncio.run() crashes with "Event loop is closed" because
+            # pooled httpx connections belong to the first loop.
+            await client.close()
 
     asyncio.run(_embed_all())
     return chunks
@@ -432,8 +439,6 @@ def _ingest_one_scope(
         except Exception as e:
             print(f"[ERROR] Embedding failed: {e}")
             sys.exit(1)
-        finally:
-            asyncio.run(client.close())
 
     report["files_indexed"] += len(new_docs)
     report["chunks_embedded"] += len(new_chunks)
