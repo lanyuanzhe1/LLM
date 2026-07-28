@@ -1,12 +1,21 @@
 """Format-routing text extraction module for RAG knowledge ingestion.
 
-Routes file extensions to the correct parser.  Thin local extraction only;
-the embedding model handles text quality.
+Primary path (when an OcrTextExtractor is supplied): every supported file
+is converted to PDF and recognized by the iFlytek PDF OCR service. The
+local parsers below remain as the failure fallback, and as the default
+for callers that pass no extractor.
 """
 
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 
-SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".txt", ".md"})
+from app.ingest.ocr_extract import OcrExtractionError, OcrTextExtractor
+
+logger = logging.getLogger(__name__)
+
+SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".txt", ".md", ".ppt", ".pptx"})
 
 
 def _read_text_file(path: Path) -> str:
@@ -50,9 +59,26 @@ _READERS = {
 }
 
 
-def read_file(file_path: Path) -> str:
-    """Extract text from a document.  Returns "" on any failure."""
+def read_file(file_path: Path, *, ocr: OcrTextExtractor | None = None) -> str:
+    """Extract text from a document. Returns "" on any failure.
+
+    With *ocr* given, the file goes through convert-to-PDF + OCR first;
+    OcrExtractionError falls back to local extraction with a warning.
+    Without *ocr*, only local extraction runs (PPT/PPTX have no local
+    parser and yield "").
+    """
     ext = file_path.suffix.lower()
+    if ext not in SUPPORTED_EXTENSIONS:
+        return ""
+    if ocr is not None:
+        try:
+            return ocr.extract(file_path)
+        except OcrExtractionError as exc:
+            logger.warning(
+                "OCR failed for %s, falling back to local extraction: %s",
+                file_path,
+                exc,
+            )
     reader = _READERS.get(ext)
     if reader is None:
         return ""

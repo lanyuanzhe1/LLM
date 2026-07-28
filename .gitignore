@@ -1,3 +1,4 @@
+.claude/worktrees/
 .worktrees/
 .superpowers/
 .env
@@ -7,3 +8,9 @@ __pycache__/
 .coverage
 htmlcov/
 vector_store/
+ocr_cache/
+.env.example
+.gitignore
+.env.example
+.playwright-mcp/
+workflow/

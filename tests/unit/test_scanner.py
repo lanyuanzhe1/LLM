@@ -66,14 +66,24 @@ class TestScanBase:
     def test_scan_base_skips_unsupported_extensions(self, tmp_path: Path):
         doc_dir = tmp_path / "docs"
         _write_file(doc_dir / "a.txt", "ok")
-        _write_file(doc_dir / "b.pptx", "no")
+        _write_file(doc_dir / "b.xlsx", "no")
         _write_file(doc_dir / "c.png", "no")
 
         docs = list(scan_base(doc_dir))
         paths = {d.path for d in docs}
         assert "a.txt" in paths
-        assert "b.pptx" not in paths
+        assert "b.xlsx" not in paths
         assert "c.png" not in paths
+
+    def test_scan_base_includes_ppt_and_pptx(self, tmp_path: Path):
+        doc_dir = tmp_path / "docs"
+        _write_file(doc_dir / "a.ppt", "x")
+        _write_file(doc_dir / "b.pptx", "x")
+
+        docs = list(scan_base(doc_dir))
+        paths = {d.path for d in docs}
+        assert "a.ppt" in paths
+        assert "b.pptx" in paths
 
     def test_scan_base_skips_symlinks(self, tmp_path: Path):
         doc_dir = tmp_path / "docs"
