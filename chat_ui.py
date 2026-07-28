@@ -21,7 +21,9 @@ import hmac
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -52,6 +54,14 @@ MAAS_API_SECRET = os.environ.get("XF_MAAS_API_SECRET", "YTQxNzQ1MjhkNzljODMxYTQ1
 MAAS_RESOURCE_ID = os.environ.get("XF_MAAS_RESOURCE_ID", "2066745321636515840")
 MAAS_SERVICE_ID = os.environ.get("XF_MAAS_SERVICE_ID", "xop3qwen32b")
 MAAS_URL = "wss://maas-api.cn-huabei-1.xf-yun.com/v1.1/chat"
+
+PDFOCR_APP_ID = os.environ.get("XF_PDFOCR_APP_ID", APP_ID)
+PDFOCR_API_SECRET = os.environ.get("XF_PDFOCR_API_SECRET", "YTQxNzQ1MjhkNzljODMxYTQ1OTRiMWZh")
+PDFOCR_START_URL = "https://iocr.xfyun.cn/ocrzdq/v1/pdfOcr/start"
+PDFOCR_STATUS_URL = "https://iocr.xfyun.cn/ocrzdq/v1/pdfOcr/status"
+PDF_OCR_ENABLED = os.environ.get("PDF_OCR_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+OCR_CACHE_DIR = Path(os.environ.get("OCR_CACHE_DIR", "./ocr_cache"))
+SOFFICE_BIN = os.environ.get("SOFFICE_PATH", "soffice")
 
 CHUNK_SIZE = 600
 CHUNK_OVERLAP = 100
@@ -181,13 +191,147 @@ def read_text(file_path: str) -> str:
 
 
 def read_document(file_path: str) -> str:
-    ext = Path(file_path).suffix.lower()
+    """统一识别入口：所有格式先转 PDF 走讯飞 OCR，失败回退本地提取。"""
+    path = Path(file_path)
+    ext = path.suffix.lower()
+    if ext not in OCR_SUPPORTED_EXTENSIONS:
+        return ""
+    if PDF_OCR_ENABLED:
+        try:
+            return _ocr_extract_cached(path)
+        except Exception as e:
+            print(f"[OCR] {path.name} 识别失败，回退本地提取: {e}")
     if ext == ".pdf":
         return read_pdf(file_path)
     elif ext == ".docx":
         return read_docx(file_path)
-    else:
+    elif ext in (".txt", ".md"):
         return read_text(file_path)
+    return ""  # PPT/PPTX 无本地解析器
+
+
+# ═══════════════════════════════════════════════════════
+# PDF OCR（讯飞文档识别）
+# ═══════════════════════════════════════════════════════
+
+OCR_SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md", ".ppt", ".pptx"}
+
+
+def _pdfocr_headers() -> dict[str, str]:
+    timestamp = str(int(time.time()))
+    md5_hash = hashlib.md5((PDFOCR_APP_ID + timestamp).encode()).hexdigest()
+    signature = base64.b64encode(
+        hmac.new(PDFOCR_API_SECRET.encode(), md5_hash.encode(), hashlib.sha1).digest()
+    ).decode()
+    return {"appId": PDFOCR_APP_ID, "timestamp": timestamp, "signature": signature}
+
+
+def _ocr_clean_markdown(text: str) -> str:
+    text = re.sub(r"!\[img\]\(data:image/[^)]+\)", "", text)
+    text = re.sub(r"[A-Za-z0-9+/=]{200,}", "", text)
+    return re.sub(r"\n{4,}", "\n\n\n", text)
+
+
+def _ocr_pdf(pdf_path: Path) -> str:
+    """上传 PDF → 轮询 → 下载 Markdown。失败抛 RuntimeError。"""
+    try:
+        with open(pdf_path, "rb") as f:
+            resp = requests.post(
+                PDFOCR_START_URL,
+                headers=_pdfocr_headers(),
+                files={"file": (pdf_path.name, f, "application/pdf")},
+                data={"exportFormat": "markdown"},
+                timeout=60,
+            )
+        result = resp.json()
+    except Exception as e:
+        raise RuntimeError(f"OCR 上传失败: {e}")
+    if not result.get("flag"):
+        raise RuntimeError(f"OCR 任务创建被拒: {result.get('desc', result)}")
+    task_no = result["data"]["taskNo"]
+
+    data: dict = {}
+    for _ in range(60):  # 5s × 60 = 最多 5 分钟
+        try:
+            resp = requests.get(
+                PDFOCR_STATUS_URL,
+                headers=_pdfocr_headers(),
+                params={"taskNo": task_no},
+                timeout=30,
+            )
+            status_result = resp.json()
+        except Exception:
+            time.sleep(5)
+            continue
+        if not status_result.get("flag"):
+            raise RuntimeError(f"OCR 状态查询被拒: {status_result.get('desc', status_result)}")
+        data = status_result["data"]
+        status = data.get("status")
+        print(f"[OCR] {pdf_path.name}: {status}")
+        if status == "FINISH":
+            break
+        if status in ("FAILED", "ANY_FAILED", "STOP"):
+            raise RuntimeError(f"OCR 任务失败: {status}")
+        time.sleep(5)
+    else:
+        raise RuntimeError("OCR 任务超时（5 分钟）")
+
+    down_url = data.get("downUrl")
+    if not down_url:
+        raise RuntimeError("OCR 结果无下载链接")
+    try:
+        resp = requests.get(down_url, timeout=60)
+        resp.raise_for_status()
+    except Exception as e:
+        raise RuntimeError(f"OCR 结果下载失败: {e}")
+    raw = resp.content
+    try:
+        text = raw.decode("utf-8").encode("latin-1").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        text = raw.decode("utf-8", errors="replace")
+    return _ocr_clean_markdown(text)
+
+
+def _to_pdf(path: Path, work_dir: Path) -> Path:
+    """非 PDF 格式经 LibreOffice 转 PDF。失败抛 RuntimeError。"""
+    if path.suffix.lower() == ".pdf":
+        return path
+    work_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [SOFFICE_BIN, "--headless", "--convert-to", "pdf",
+             "--outdir", str(work_dir), str(path)],
+            capture_output=True,
+            timeout=120,
+        )
+    except FileNotFoundError:
+        raise RuntimeError(f"未找到 LibreOffice: {SOFFICE_BIN}")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"PDF 转换超时: {path.name}")
+    if proc.returncode != 0:
+        detail = proc.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"PDF 转换失败: {detail}")
+    output = work_dir / f"{path.stem}.pdf"
+    if not output.is_file():
+        raise RuntimeError(f"PDF 转换无输出: {path.name}")
+    return output
+
+
+def _ocr_extract_cached(source_path: Path) -> str:
+    """OCR 提取（按源文件 SHA-256 磁盘缓存，避免重复计费）。失败抛 RuntimeError。"""
+    digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+    cache_path = OCR_CACHE_DIR / f"{digest}.md"
+    if cache_path.is_file() and cache_path.stat().st_size > 0:
+        print(f"[OCR] 缓存命中: {source_path.name}")
+        return cache_path.read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="rag_ocr_") as tmp:
+        pdf_path = _to_pdf(source_path, Path(tmp))
+        text = _ocr_pdf(pdf_path)
+    if not text.strip():
+        raise RuntimeError("OCR 返回空文本")
+    OCR_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(text, encoding="utf-8")
+    return text
 
 
 # ═══════════════════════════════════════════════════════
@@ -456,8 +600,8 @@ body { font-family: -apple-system, "Segoe UI", sans-serif; background:var(--bg);
     <p>RAG 测试对话窗口</p>
   </div>
   <div class="upload-area">
-    <label for="fileInput">📁 点击上传文档<br><small>PDF / DOCX / TXT / MD</small></label>
-    <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md">
+    <label for="fileInput">📁 点击上传文档<br><small>PDF / DOCX / TXT / MD / PPT / PPTX</small></label>
+    <input type="file" id="fileInput" accept=".pdf,.docx,.txt,.md,.ppt,.pptx">
   </div>
   <div class="kb-stats" id="kbStats">
     <h3>📊 知识库状态</h3>
