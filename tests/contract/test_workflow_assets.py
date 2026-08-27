@@ -121,7 +121,7 @@ def test_workflow_assets_document_exact_schema_mapping_and_operator_quick_start(
             "python -m pip install -r requirements-dev.txt",
             ".env.example",
             "python -m pytest -m \"not online\" -q",
-            "SKIP_VECTOR_SEARCH=1 python build_vector_store.py",
+            "python ingest_chatdoc.py",
             "python -m uvicorn app.main:app",
             "--workers 1",
             "GET /health",
@@ -129,14 +129,13 @@ def test_workflow_assets_document_exact_schema_mapping_and_operator_quick_start(
             "503",
             "PowerShell",
             "Copy-Item .env.example .env",
-            "$env:SKIP_VECTOR_SEARCH = \"1\"",
             "python -m pytest -m 'not online' -q",
             "python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1",
         ]:
             assert required in text
     assert "conda activate LLM" in readme
     assert "python -m uvicorn" in readme
-    assert "只适用于该 macOS" in readme
+    assert "讯飞官方 ChatDoc" in readme
     assert "向量" in operator_guide
     assert "静态云配置" in operator_guide
 
@@ -144,14 +143,14 @@ def test_workflow_assets_document_exact_schema_mapping_and_operator_quick_start(
 def test_operator_online_verification_commands_are_scoped_to_each_shell():
     guide = Path("docs/星辰工作流联调指南.md").read_text(encoding="utf-8")
     posix = guide.split("## 1. macOS/Linux：安装与配置", 1)[1].split(
-        "## 3. Windows PowerShell：配置、验证、重建与启动", 1
+        "## 3. Windows PowerShell：配置、验证、上传与启动", 1
     )[0]
-    powershell = guide.split("## 3. Windows PowerShell：配置、验证、重建与启动", 1)[
+    powershell = guide.split("## 3. Windows PowerShell：配置、验证、上传与启动", 1)[
         1
     ].split("## 4. 暴露工具接口", 1)[0]
 
-    assert "source .env" in posix
     assert 'python -m pytest -m "not online" -q' in posix
+    assert "python ingest_chatdoc.py" in posix
     assert "python -m pytest tests/online -v" in posix
     assert "全部收集并跳过" in posix
     assert (
@@ -182,6 +181,7 @@ def test_operator_online_verification_commands_are_scoped_to_each_shell():
         in powershell
     )
     assert "python -m pytest -m 'not online' -q" in powershell
+    assert "python ingest_chatdoc.py" in powershell
     assert "python -m pytest tests/online -v" in powershell
     assert "全部收集并跳过" in powershell
     assert '$env:RUN_ONLINE = "1"' in powershell

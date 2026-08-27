@@ -39,10 +39,3 @@ class ConfigurationError(AppError):
 class ProviderUnavailable(AppError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(code, message, status_code=502, retryable=True)
-
-
-class VectorStoreNotReady(AppError):
-    def __init__(self, message: str = "向量库尚未就绪") -> None:
-        super().__init__(
-            "VECTOR_STORE_NOT_READY", message, status_code=503, retryable=True
-        )

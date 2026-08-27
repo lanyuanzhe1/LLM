@@ -1,66 +1,48 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
-
 ## Project
 
-Building a grain storage (粮食储藏) vertical-domain LLM RAG pipeline on iFlytek platform. Knowledge base: 17 documents (PDFs + DOCX, ~475K chars) covering pest control, low-temp storage, CO2 monitoring, smart granary management, and food security law.
+Grain-storage vertical-domain assistant using iFlytek ChatDoc as the managed RAG backend. Knowledge files live under `knowledge/` and cover pest control, low-temperature storage, CO2 monitoring, smart granary management, and food-security law.
 
 ## Environment
 
-- Conda env: `LLM` (Python 3.11.11) — always use this environment for every command run in this repository
-- Activate with `conda activate LLM`, or call `A:\Anaconda_envs\envs\LLM\python.exe` directly in non-interactive shells
-- **CRITICAL**: Use `python -m pip install <pkg>` from the `LLM` environment — plain `pip` points to base conda (Python 3.13), which installs cp313-incompatible wheels
-- GPU: RTX 4050 Laptop 8GB (CUDA available, not currently used by the pipeline)
+- Always use the conda `LLM` environment (Python 3.11.11).
+- In this macOS workspace call `/opt/homebrew/Caskroom/miniconda/base/envs/LLM/bin/python` directly.
+- Install packages with `python -m pip`; never use the system Python or plain base-environment `pip`.
 
 ## Key commands
 
 ```bash
-python test_embedding_api.py      # Verify iFlytek Embedding API connectivity
-python build_vector_store.py       # Full pipeline: read docs → chunk → vectorize → index → search
-python search_kb.py                # Load existing vector store, interactive search only
+python ingest_chatdoc.py
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+python -m pytest -m "not online" -q
 ```
 
-## Architecture
+## Active RAG architecture
 
-```
-knowledge/ (17 PDFs/DOCX)
-    │  build_vector_store.py
-    ▼
-vector_store/
-    vectors.npy          (1023 × 2560 float32)
-    chunks_metadata.json (text + source per chunk)
-    │  search_kb.py
-    ▼
-sklearn NearestNeighbors (cosine metric) → ranked chunks → prompt → LLM (TBD)
+```text
+knowledge/
+    -> ingest_chatdoc.py
+    -> iFlytek ChatDoc AUTO parse/OCR/chunk/vectorize
+    -> artifacts/chatdoc/base.json
+    -> app/rag/chatdoc_retriever.py
+    -> FastAPI and Xingchen workflow
 ```
 
-## API authentication gotchas
+Do not add local document parsing, OCR, chunking, Embedding, sklearn/FAISS indexes, or local vector-store fallbacks. The former local RAG implementation was intentionally deleted. `vector_store/` and `ocr_cache/` may contain legacy data but are not runtime inputs.
 
-iFlytek uses **two different** HMAC schemes — do not confuse them:
+## ChatDoc behavior
 
-| API | Host | Auth |
-|-----|------|------|
-| **Embedding** | `emb-cn-huabei-1.xf-yun.com` | HMAC-SHA256, digest MUST include `SHA-256=` prefix |
-| **ChatDoc** | `chatdoc.xfyun.cn` | MD5(appId+timestamp) → HmacSHA1 → Base64 |
-
-Omitting the `SHA-256=` prefix on the Embedding API digest causes `401 HMAC signature does not match`.
-
-Full API references at `@docs/官网文档/`. Project plans at `@docs/`.
-
-## Dependencies
-
-Core: `requests`, `numpy`, `scikit-learn`, `tqdm`
-Document parsing: `PyMuPDF` (PDF), `python-docx` (Word)
-FAISS does NOT work on this Windows machine — sklearn NearestNeighbors is the replacement.
+- Authentication: `MD5(appId + timestamp)` -> `HmacSHA1` with APISecret -> Base64.
+- Upload parsing mode: `AUTO` with ChatDoc-managed OCR, splitting, vectorization, hybrid search, and reranking.
+- Files over 20 MiB are skipped; the user will split them manually.
+- The upload process publishes `artifacts/chatdoc/base.json` and updates `XF_CHATDOC_REPO_ID` only after every accepted file is vectorized and added to the repository.
+- Provider errors must be mapped to safe application codes; never expose credentials, auth headers, or raw provider error bodies.
 
 ## Credentials
 
-iFlytek APPID/APIKey/APISecret are hardcoded in `build_vector_store.py`, `search_kb.py`, and `test_embedding_api.py`. See `@docs/官网文档/项目凭据与配置.md` for values.
+Credentials are loaded from `.env`. ChatDoc currently reads the shared APISecret from `XF_EMBEDDING_API_SECRET`; this name is retained for compatibility only and does not mean the legacy Embedding API is used.
 
-## Known limitations
+## Current external blocker
 
-- FAISS DLL fails on Windows (missing VC++ runtime) — use sklearn only
-- No test framework; `test_embedding_api.py` is a manual connectivity check
-- No `requirements.txt` or `pyproject.toml` yet
-- Knowledge base PDFs with image-only pages (scanned docs) fail PyMuPDF — may need OCR
+The last ChatDoc upload attempt returned provider code `66001` (account quota/balance unavailable). Do not switch the local manifest or repo configuration after a partial upload.

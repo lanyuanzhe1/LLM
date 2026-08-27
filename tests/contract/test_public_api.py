@@ -8,12 +8,14 @@ from types import SimpleNamespace
 from urllib.parse import quote
 
 import httpx
-import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import SecretStr
-from starlette.exceptions import StarletteDeprecationWarning
+try:
+    from starlette.exceptions import StarletteDeprecationWarning
+except ImportError:
+    StarletteDeprecationWarning = DeprecationWarning
 
 with warnings.catch_warnings():
     warnings.filterwarnings(
@@ -26,14 +28,12 @@ with warnings.catch_warnings():
     )
     from fastapi.testclient import TestClient
 
-from app.clients.iflytek_embedding import IflytekEmbeddingClient
 from app.core.config import Settings
-from app.core.errors import VectorStoreNotReady
+from app.core.errors import ProviderUnavailable
 from app.core.observability import RequestIdMiddleware
 from app.core.request_context import RequestContextStore
 from app.dependencies import ServiceContainer
 from app.rag.evidence import Evidence
-from app.rag.vector_store import VectorStore
 from app.schemas.events import WorkflowFrame
 from app.schemas.tools import (
     CitationValidateResponse,
@@ -77,16 +77,10 @@ class FakeWorkflow:
 
 class FailingRetriever:
     async def retrieve(self, request):
-        raise VectorStoreNotReady()
-
-
-class EmbeddingFailureRetriever:
-    def __init__(self, embedding: IflytekEmbeddingClient) -> None:
-        self.embedding = embedding
-
-    async def retrieve(self, request):
-        await self.embedding.embed(request.query, domain="query")
-        raise AssertionError("unreachable")
+        raise ProviderUnavailable(
+            "CHATDOC_UNAVAILABLE",
+            "讯飞 ChatDoc 检索服务暂时不可用",
+        )
 
 
 class CorrelatedRetriever:
@@ -184,12 +178,18 @@ class InProcessToolWorkflow:
         )
 
 
-class FakeStore:
+class FakeChatDocRetriever:
     def __init__(self, evidence: Evidence | None = None) -> None:
-        self.metadata = [{}, {}, {}]
-        self.dimension = 2560
         self.evidence = evidence
         self.requested_ids: list[str] = []
+
+    def ready_details(self):
+        return {
+            "status": "ready",
+            "backend": "chatdoc",
+            "sources": 3,
+            "repo": "repo-123",
+        }
 
     def get_evidence(self, evidence_id: str) -> Evidence | None:
         self.requested_ids.append(evidence_id)
@@ -209,10 +209,9 @@ EVIDENCE = Evidence(
 )
 
 
-def settings(vector_store_dir: Path | None = None, **overrides):
+def settings(**overrides):
     values = {
         "xf_app_id": "app-id",
-        "xf_embedding_api_key": SecretStr("embedding-key"),
         "xf_embedding_api_secret": SecretStr("embedding-secret"),
         "xf_maas_api_key": SecretStr("maas-key"),
         "xf_maas_api_secret": SecretStr("maas-secret"),
@@ -222,10 +221,11 @@ def settings(vector_store_dir: Path | None = None, **overrides):
         "xf_workflow_api_secret": SecretStr("workflow-secret"),
         "xf_workflow_flow_id": "flow-id",
         "tools_service_token": SecretStr("tool-token"),
-        "vector_store_dir": vector_store_dir or Path("missing-vector-store"),
+        "xf_chatdoc_repo_id": "repo-123",
+        "chatdoc_manifest_path": Path("missing-chatdoc-manifest.json"),
         "retrieval_min_score": 0.35,
-        "embedding_url": "https://embedding.invalid/",
-        "embedding_timeout_seconds": 1,
+        "chatdoc_url": "https://chatdoc.invalid/",
+        "chatdoc_timeout_seconds": 1,
         "maas_url": "wss://maas.invalid/v1/chat",
         "maas_timeout_seconds": 1,
         "maas_max_frames": 1024,
@@ -246,7 +246,6 @@ def settings(vector_store_dir: Path | None = None, **overrides):
 
 def container(
     *,
-    vector_store=None,
     retriever=None,
     workflow=None,
     contexts=None,
@@ -258,14 +257,12 @@ def container(
         cases=None,
         citations=None,
         contexts=resolved_contexts,
-        vector_store=vector_store,
         workflow=workflow or FakeWorkflow(resolved_contexts),
     )
 
 
 def make_client(
     *,
-    vector_store=None,
     retriever=None,
     workflow=None,
     contexts=None,
@@ -277,7 +274,6 @@ def make_client(
         create_app(
             settings=app_settings or settings(),
             container=container(
-                vector_store=vector_store,
                 retriever=retriever,
                 workflow=workflow,
                 contexts=contexts,
@@ -312,7 +308,7 @@ def test_importing_application_does_not_load_settings_or_open_network(
     importlib.reload(app.main)
 
 
-def test_health_is_live_and_ready_reports_missing_store():
+def test_health_is_live_and_ready_reports_missing_chatdoc_retriever():
     client = make_client()
 
     health = client.get("/health")
@@ -322,22 +318,23 @@ def test_health_is_live_and_ready_reports_missing_store():
     assert health.json() == {"status": "ok"}
     assert ready.status_code == 503
     assert ready.json() == {
-        "code": "VECTOR_STORE_NOT_READY",
-        "message": "向量库尚未就绪",
-        "retryable": True,
+        "code": "CHATDOC_NOT_READY",
+        "message": "讯飞 ChatDoc 检索服务尚未就绪",
+        "retryable": False,
     }
 
 
-def test_ready_reports_vector_count_and_dimension():
-    client = make_client(vector_store=FakeStore())
+def test_ready_reports_chatdoc_details():
+    client = make_client(retriever=FakeChatDocRetriever())
 
     response = client.get("/ready")
 
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "vectors": 3,
-        "dimension": 2560,
+        "backend": "chatdoc",
+        "sources": 3,
+        "repo": "repo-123",
     }
 
 
@@ -350,7 +347,7 @@ def test_ready_reports_vector_count_and_dimension():
 )
 def test_ready_rejects_blank_injected_cloud_configuration(field, value):
     client = make_client(
-        vector_store=FakeStore(),
+        retriever=FakeChatDocRetriever(),
         app_settings=settings(**{field: value}),
     )
 
@@ -367,7 +364,9 @@ def test_ready_rejects_blank_injected_cloud_configuration(field, value):
 def test_ready_rejects_missing_injected_cloud_configuration():
     incomplete = settings()
     del incomplete.xf_workflow_api_secret
-    client = make_client(vector_store=FakeStore(), app_settings=incomplete)
+    client = make_client(
+        retriever=FakeChatDocRetriever(), app_settings=incomplete
+    )
 
     response = client.get("/ready")
 
@@ -490,8 +489,8 @@ def test_authenticated_tool_nonfinite_case_returns_safe_422(value):
 
 
 def test_source_returns_evidence_for_encoded_path_id():
-    store = FakeStore(EVIDENCE)
-    client = make_client(vector_store=store)
+    retriever = FakeChatDocRetriever(EVIDENCE)
+    client = make_client(retriever=retriever)
     encoded_id = quote(EVIDENCE.evidence_id, safe="")
 
     response = client.get(f"/v1/sources/{encoded_id}")
@@ -499,12 +498,12 @@ def test_source_returns_evidence_for_encoded_path_id():
     assert response.status_code == 200
     assert response.json()["evidence_id"] == EVIDENCE.evidence_id
     assert response.json()["score"] is None
-    assert store.requested_ids == [EVIDENCE.evidence_id]
+    assert retriever.requested_ids == [EVIDENCE.evidence_id]
 
 
-@pytest.mark.parametrize("store", [None, FakeStore()])
-def test_source_returns_404_for_missing_evidence_or_store(store):
-    response = make_client(vector_store=store).get(
+@pytest.mark.parametrize("retriever", [None, FakeChatDocRetriever()])
+def test_source_returns_404_for_missing_evidence(retriever):
+    response = make_client(retriever=retriever).get(
         "/v1/sources/sha256%3Amissing"
     )
 
@@ -565,7 +564,7 @@ def test_app_errors_use_public_shape_and_request_id():
         json={"request_id": "tool-request", "query": "低温"},
     )
 
-    assert response.status_code == 503
+    assert response.status_code == 502
     assert response.headers["x-request-id"] != "public-error"
     assert re.fullmatch(
         r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
@@ -573,53 +572,10 @@ def test_app_errors_use_public_shape_and_request_id():
         response.headers["x-request-id"],
     )
     assert response.json() == {
-        "code": "VECTOR_STORE_NOT_READY",
-        "message": "向量库尚未就绪",
+        "code": "CHATDOC_UNAVAILABLE",
+        "message": "讯飞 ChatDoc 检索服务暂时不可用",
         "retryable": True,
     }
-
-
-def test_embedding_provider_body_never_enters_api_error_response():
-    sentinel = "RAW_EMBEDDING_API_RESPONSE_SECRET"
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            json={
-                "header": {
-                    "code": 10001,
-                    "message": sentinel,
-                }
-            },
-        )
-
-    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    embedding = IflytekEmbeddingClient(
-        app_id="app",
-        api_key="key",
-        api_secret="secret",
-        url="https://example.test/",
-        timeout_seconds=1,
-        http=http,
-        max_retries=1,
-    )
-    client = make_client(retriever=EmbeddingFailureRetriever(embedding))
-
-    with client:
-        response = client.post(
-            "/tools/v1/retrieve",
-            headers={"Authorization": "Bearer tool-token"},
-            json={"request_id": "tool-request", "query": "低温"},
-        )
-        client.portal.call(http.aclose)
-
-    assert response.status_code == 502
-    assert response.json() == {
-        "code": "EMBEDDING_UNAVAILABLE",
-        "message": "向量化服务暂时不可用",
-        "retryable": True,
-    }
-    assert sentinel not in response.text
 
 
 def test_tools_router_remains_mounted_and_authenticated():
@@ -643,7 +599,6 @@ def test_public_and_real_tool_routes_share_isolated_server_uuid_chains(caplog):
         cases=None,
         citations=CorrelatedValidator(),
         contexts=contexts,
-        vector_store=None,
         workflow=workflow,
     )
     application = create_app(
@@ -798,62 +753,6 @@ def test_http_completion_log_occurs_after_stream_body_finishes(caplog):
     assert relevant_events == ["stream_finished", "http_request"]
 
 
-def test_missing_vector_store_builds_unavailable_retriever_without_network(
-    monkeypatch, tmp_path
-):
-    from app.main import UnavailableRetriever, build_container
-    from app.schemas.tools import RetrieveRequest
-
-    opened = 0
-
-    class NoNetworkAsyncClient:
-        def __init__(self):
-            nonlocal opened
-            opened += 1
-
-        async def aclose(self):
-            pass
-
-    monkeypatch.setattr(httpx, "AsyncClient", NoNetworkAsyncClient)
-    built, closeables = build_container(settings(tmp_path / "absent"))
-
-    assert built.vector_store is None
-    assert isinstance(built.retriever, UnavailableRetriever)
-    assert opened == 2
-    assert len(closeables) == 3
-
-    import asyncio
-
-    with pytest.raises(VectorStoreNotReady):
-        asyncio.run(
-            built.retriever.retrieve(
-                RetrieveRequest(request_id="request", query="低温")
-            )
-        )
-    asyncio.run(closeables[0].close())
-    asyncio.run(closeables[1].close())
-    asyncio.run(closeables[2].close())
-
-
-def test_vector_store_builds_ready_retriever(monkeypatch, tmp_path):
-    from app.main import build_container
-
-    np.save(tmp_path / "vectors.npy", np.array([[1.0, 0.0]], dtype=np.float32))
-    (tmp_path / "chunks_metadata.json").write_text(
-        '[{"source":"doc.pdf","text":"text"}]',
-        encoding="utf-8",
-    )
-    built, closeables = build_container(settings(tmp_path))
-
-    assert isinstance(built.vector_store, VectorStore)
-    assert built.retriever.store is built.vector_store
-
-    import asyncio
-
-    for closeable in closeables:
-        asyncio.run(closeable.close())
-
-
 def test_validated_environment_limits_reach_owned_provider_clients(
     monkeypatch, tmp_path
 ):
@@ -861,7 +760,6 @@ def test_validated_environment_limits_reach_owned_provider_clients(
 
     environment = {
         "XF_APP_ID": "app-id",
-        "XF_EMBEDDING_API_KEY": "embedding-key",
         "XF_EMBEDDING_API_SECRET": "embedding-secret",
         "XF_MAAS_API_KEY": "maas-key",
         "XF_MAAS_API_SECRET": "maas-secret",
@@ -871,7 +769,8 @@ def test_validated_environment_limits_reach_owned_provider_clients(
         "XF_WORKFLOW_API_SECRET": "workflow-secret",
         "XF_WORKFLOW_FLOW_ID": "flow-id",
         "TOOLS_SERVICE_TOKEN": "tool-token",
-        "VECTOR_STORE_DIR": str(tmp_path / "absent"),
+        "XF_CHATDOC_REPO_ID": "repo-123",
+        "CHATDOC_MANIFEST_PATH": str(tmp_path / "chatdoc.json"),
         "MAAS_MAX_FRAMES": "11",
         "MAAS_MAX_PAYLOAD_BYTES": "1200",
         "MAAS_MAX_ANSWER_CHARS": "1300",
@@ -881,6 +780,24 @@ def test_validated_environment_limits_reach_owned_provider_clients(
     }
     for key, value in environment.items():
         monkeypatch.setenv(key, value)
+    (tmp_path / "chatdoc.json").write_text(
+        json.dumps(
+            {
+                "backend": "iflytek_chatdoc",
+                "repo_id": "repo-123",
+                "sources": {
+                    "doc.pdf": {
+                        "sha256": "a" * 64,
+                        "source_type": None,
+                        "uploads": [
+                            {"file_id": "file-1", "status": "vectored"}
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     configured = Settings(_env_file=None)
     captured = {}
 
@@ -891,7 +808,7 @@ def test_validated_environment_limits_reach_owned_provider_clients(
         async def close(self):
             pass
 
-    class Embedding(Closeable):
+    class ChatDoc(Closeable):
         pass
 
     class MaaS(Closeable):
@@ -904,7 +821,7 @@ def test_validated_environment_limits_reach_owned_provider_clients(
             super().__init__(**kwargs)
             captured["workflow"] = kwargs
 
-    monkeypatch.setattr("app.main.IflytekEmbeddingClient", Embedding)
+    monkeypatch.setattr("app.main.IflytekChatDocClient", ChatDoc)
     monkeypatch.setattr("app.main.IflytekMaaSClient", MaaS)
     monkeypatch.setattr("app.main.XingchenWorkflowClient", Workflow)
 
@@ -1030,11 +947,11 @@ def test_all_owned_closeables_close_once_even_when_one_close_fails(
 
 
 def test_startup_failure_closes_resources_created_before_failure(
-    monkeypatch,
+    monkeypatch, tmp_path
 ):
     from app.main import create_app
 
-    class Embedding:
+    class ChatDoc:
         instances = []
 
         def __init__(self, **kwargs):
@@ -1058,20 +975,37 @@ def test_startup_failure_closes_resources_created_before_failure(
         async def close(self):
             self.calls += 1
 
-    monkeypatch.setattr(
-        "app.main.VectorStore.load",
-        lambda directory: (_ for _ in ()).throw(VectorStoreNotReady()),
+    manifest = tmp_path / "chatdoc.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "backend": "iflytek_chatdoc",
+                "repo_id": "repo-123",
+                "sources": {
+                    "doc.pdf": {
+                        "sha256": "a" * 64,
+                        "source_type": None,
+                        "uploads": [
+                            {"file_id": "file-1", "status": "vectored"}
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
     )
-    monkeypatch.setattr("app.main.IflytekEmbeddingClient", Embedding)
+    monkeypatch.setattr("app.main.IflytekChatDocClient", ChatDoc)
     monkeypatch.setattr("app.main.IflytekMaaSClient", MaaS)
     monkeypatch.setattr("app.main.XingchenWorkflowClient", BrokenWorkflow)
 
     with pytest.raises(RuntimeError, match="workflow construction failed"):
-        with TestClient(create_app(settings=settings())):
+        with TestClient(
+            create_app(settings=settings(chatdoc_manifest_path=manifest))
+        ):
             pass
 
-    assert len(Embedding.instances) == 1
-    assert Embedding.instances[0].calls == 1
+    assert len(ChatDoc.instances) == 1
+    assert ChatDoc.instances[0].calls == 1
     assert len(MaaS.instances) == 1
     assert MaaS.instances[0].calls == 1
 

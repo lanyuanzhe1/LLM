@@ -1,6 +1,7 @@
 .claude/worktrees/
 .worktrees/
 .superpowers/
+.DS_Store
 .env
 __pycache__/
 *.py[cod]
@@ -8,9 +9,16 @@ __pycache__/
 .coverage
 htmlcov/
 vector_store/
+.playwright-mcp/
+ocr_cache/
 ocr_cache/
 .env.example
 .gitignore
 .env.example
 .playwright-mcp/
 workflow/
+.agents/
+.claude/
+.codex/
+
+CLAUDE.md

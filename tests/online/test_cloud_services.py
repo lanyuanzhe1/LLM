@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-from app.clients.iflytek_embedding import IflytekEmbeddingClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
 from app.core.config import Settings
@@ -15,23 +14,6 @@ def online_settings() -> Settings:
     if os.getenv("RUN_ONLINE") != "1":
         pytest.skip("set RUN_ONLINE=1 to call real iFlytek services")
     return Settings()
-
-
-@pytest.mark.asyncio
-async def test_embedding_online():
-    settings = online_settings()
-    client = IflytekEmbeddingClient(
-        app_id=settings.xf_app_id,
-        api_key=settings.xf_embedding_api_key.get_secret_value(),
-        api_secret=settings.xf_embedding_api_secret.get_secret_value(),
-        url=settings.embedding_url,
-        timeout_seconds=settings.embedding_timeout_seconds,
-    )
-    try:
-        vector = await client.embed("低温储粮", domain="query")
-        assert vector.shape == (2560,)
-    finally:
-        await client.close()
 
 
 @pytest.mark.asyncio

@@ -4,63 +4,99 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Building a grain storage (粮食储藏) vertical-domain LLM RAG pipeline on iFlytek platform. Knowledge base: 17 documents (PDFs + DOCX, ~475K chars) covering pest control, low-temp storage, CO2 monitoring, smart granary management, and food security law.
+Grain storage (粮食储藏) vertical-domain RAG/agent system on the iFlytek (讯飞) platform. Knowledge base: PDFs/DOCX under `knowledge/` (pest control, low-temp storage, CO2 monitoring, smart granary, food security law). The system answers via a fine-tuned MaaS model, grounded in a local vector store, orchestrated by a Xingchen (星辰) cloud workflow.
 
 ## Environment
 
-- Conda env: `LLM` (Python 3.11.11) — always use this environment for every command run in this repository
-- Activate with `conda activate LLM`, or call `A:\Anaconda_envs\envs\LLM\python.exe` directly in non-interactive shells
-- **CRITICAL**: Use `python -m pip install <pkg>` from the `LLM` environment — plain `pip` points to base conda (Python 3.13), which installs cp313-incompatible wheels
-- GPU: RTX 4050 Laptop 8GB (CUDA available, not currently used by the pipeline)
+- Python 3.11 on this Mac: `/opt/homebrew/Caskroom/miniconda/base/bin/python` (miniconda base). Never use the system Python; install with `python -m pip install <pkg>`.
+- macOS system proxy (127.0.0.1:7897) must stay active for iFlytek API calls — do NOT set `NO_PROXY='*'`.
+- Only `app/core/config.py` (pydantic-settings) reads `.env`. **`ingest_knowledge.py` and `chat_ui.py` read `os.environ` directly** — run `set -a && source .env && set +a` before them.
 
 ## Key commands
 
 ```bash
-python test_embedding_api.py      # Verify iFlytek Embedding API connectivity
-python build_vector_store.py       # Full pipeline: read docs → chunk → vectorize → index → search
-python search_kb.py                # Load existing vector store, interactive search only
+# Install
+python -m pip install -r requirements-dev.txt   # includes requirements.txt + pytest
+
+# Ingest knowledge base (incremental, SHA-256/manifest cached, paced ~1.1s/req for API quota)
+python ingest_knowledge.py --scope base                  # built-in KB  → vector_store/base/
+python ingest_knowledge.py --project-id demo --source /path/to/file.pdf
+python ingest_knowledge.py --scope all-projects          # rebuild all project KBs
+
+# Run the FastAPI service (single worker — all state is in-process)
+VECTOR_STORE_DIR=vector_store/base python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
+curl http://127.0.0.1:8000/health && curl http://127.0.0.1:8000/ready
+
+# Standalone local RAG demo UI (self-contained, no FastAPI): http://127.0.0.1:7860
+python chat_ui.py
+
+# Tests (pytest.ini: asyncio_mode=auto, marker `online`)
+python -m pytest -m "not online" -q              # offline suite
+python -m pytest tests/unit/test_scanner.py -v   # single file / ::test_name for one test
+RUN_ONLINE=1 python -m pytest tests/online/ -v   # consumes real iFlytek quota
 ```
+
+**Test gotchas (this machine):** do NOT run the full suite with `-W error` (`import fitz` segfaults under it) and the full suite has pre-existing failures — run focused test files instead. Full runtime recipes live in the `verify` skill (`.claude/skills/verify/SKILL.md`).
 
 ## Architecture
 
 ```
-knowledge/ (17 PDFs/DOCX)
-    │  build_vector_store.py
-    ▼
-vector_store/
-    vectors.npy          (1023 × 2560 float32)
-    chunks_metadata.json (text + source per chunk)
-    │  search_kb.py
-    ▼
-sklearn NearestNeighbors (cosine metric) → ranked chunks → prompt → LLM (TBD)
+knowledge/ ──ingest_knowledge.py──▶ vector_store/{base,projects/<id>}/
+  (OCR via iFlytek PDF-OCR, cached in ocr_cache/;     (vectors.npy, chunks_metadata.json,
+   LibreOffice/PyMuPDF/python-docx fallback;           manifest.json, ingest_report.json)
+   chunk 600/100 overlap; iFlytek Embedding)
+                                        │
+POST /v1/chat ─▶ WorkflowGateway ─▶ Xingchen workflow (cloud, SSE)
+                    ▲                      │ calls back, Bearer TOOLS_SERVICE_TOKEN
+                    │                      ▼
+        RequestContextStore ◀── /tools/v1/{retrieve, generate, cases/evaluate, citations/validate}
+                    │                      (retriever→Embedding+VectorStore; generation→MaaS WS)
+                    ▼
+        gateway buffers workflow answer, reconciles with request context,
+        emits SSE delta/citations/done only if retrieval sufficient AND
+        citation validation passed — trust-but-verify anti-hallucination gate
 ```
 
-## API authentication gotchas
+Key point: **`/v1/chat` does not retrieve or generate itself.** The remote Xingchen workflow orchestrates by calling the four `/tools/v1/*` endpoints; each tool call writes into the in-process `RequestContextStore` keyed by request_id, and the gateway reconciles before streaming. `workflow/tool_contracts.json` is the offline contract for these tools — keep it in sync with `app/schemas/tools.py` (enforced by `tests/contract/test_workflow_assets.py`).
 
-iFlytek uses **two different** HMAC schemes — do not confuse them:
+### `app/` layout
+
+- `main.py` / `dependencies.py` — `create_app()` + lifespan-built `ServiceContainer` (retriever, generation, cases, citations, contexts, vector_store, workflow)
+- `core/` — `config.py` (Settings, `.env`, SecretStr), `errors.py` (AppError hierarchy), `observability.py` (X-Request-ID middleware), `request_context.py` (TTL store)
+- `clients/` — iFlytek API clients: `iflytek_embedding.py` (HTTPS), `iflytek_maas.py` (WebSocket, fine-tuned model), `xingchen_workflow.py` (SSE), `iflytek_pdf_ocr.py`
+- `rag/` — `vector_store.py` (sklearn NearestNeighbors, cosine, brute), `retriever.py`, `evidence.py`; `registry.py`/`project_retriever.py` (base+project merge) exist but are **not yet wired into main.py**
+- `services/` — `generation.py` (grain-domain system prompt, mandatory 结论/依据/适用条件/不确定性/来源 sections with `[E#]` citations), `citation_validation.py`, `workflow_gateway.py`
+- `api/` — public: `/v1/chat`, `/v1/cases/analyze` (both SSE), `/v1/sources/{evidence_id}`, `/health`, `/ready`
+- `tools/routes.py` — the four workflow tool endpoints, Bearer-token guarded
+
+## iFlytek API authentication gotchas
+
+Different services use **different** HMAC schemes — do not mix them up:
 
 | API | Host | Auth |
 |-----|------|------|
-| **Embedding** | `emb-cn-huabei-1.xf-yun.com` | HMAC-SHA256, digest MUST include `SHA-256=` prefix |
-| **ChatDoc** | `chatdoc.xfyun.cn` | MD5(appId+timestamp) → HmacSHA1 → Base64 |
+| Embedding | `emb-cn-huabei-1.xf-yun.com` | HMAC-SHA256; digest header MUST include the `SHA-256=` prefix (omitting it → `401 HMAC signature does not match`) |
+| MaaS chat | `maas-api.cn-huabei-1.xf-yun.com` (WSS) | HMAC-SHA256, authorization passed as query param |
+| Xingchen workflow | `xingchen-api.xf-yun.com` | `Bearer <api_key>:<api_secret>` |
+| PDF OCR | `iocr.xfyun.cn` | `Base64(HmacSHA1(MD5(appId+timestamp), apiSecret))` headers |
 
-Omitting the `SHA-256=` prefix on the Embedding API digest causes `401 HMAC signature does not match`.
+Embedding API rate limit: requests <1s apart → HTTP 500 code 11202; the ingest script paces itself (`INGEST_SLEEP_INTERVAL`, default 1.1s).
 
-Full API references at `@docs/官网文档/`. Project plans at `@docs/`.
+Full API references: `docs/官网文档/` (incl. `项目凭据与配置.md`). Design docs: `docs/` (星辰工作流联调指南, superpowers specs/plans).
 
-## Dependencies
+## Credentials & config
 
-Core: `requests`, `numpy`, `scikit-learn`, `tqdm`
-Document parsing: `PyMuPDF` (PDF), `python-docx` (Word)
-FAISS does NOT work on this Windows machine — sklearn NearestNeighbors is the replacement.
+- `.env` (gitignored) holds all keys: `XF_APP_ID`, `XF_EMBEDDING_API_KEY/SECRET`, `XF_MAAS_API_KEY/SECRET`, `XF_MAAS_RESOURCE_ID/SERVICE_ID`, `XF_WORKFLOW_API_KEY/SECRET/FLOW_ID`, `XF_PDFOCR_APP_ID/API_SECRET`, `TOOLS_SERVICE_TOKEN`, plus tuning knobs (`VECTOR_STORE_DIR`, `RETRIEVAL_MIN_SCORE`, `*_TIMEOUT_SECONDS`, `*_MAX_FRAMES/PAYLOAD_BYTES/ANSWER_CHARS`, `LOG_LEVEL`).
+- Known issue: `chat_ui.py`, `pdf_ocr.py`, and files under `scripts/`/`history/` still carry hardcoded credential fallbacks — don't propagate this pattern into `app/`.
 
-## Credentials
+## Tests layout
 
-iFlytek APPID/APIKey/APISecret are hardcoded in `build_vector_store.py`, `search_kb.py`, and `test_embedding_api.py`. See `@docs/官网文档/项目凭据与配置.md` for values.
+`tests/unit/` (clients, ingest, rag, services, config), `tests/contract/` (public `/v1/*` + `/tools/v1/*` contracts, workflow assets vs schemas), `tests/integration/` (WorkflowGateway wiring), `tests/online/` (real API, `RUN_ONLINE=1` gated). When changing RAG ingest behavior, write tests first (per README).
 
-## Known limitations
+## Known limitations & legacy
 
-- FAISS DLL fails on Windows (missing VC++ runtime) — use sklearn only
-- No test framework; `test_embedding_api.py` is a manual connectivity check
-- No `requirements.txt` or `pyproject.toml` yet
-- Knowledge base PDFs with image-only pages (scanned docs) fail PyMuPDF — may need OCR
+- **Broken import:** `app/main.py` and `tests/unit/test_case_rules.py` import `app.domain.cases.rules.CaseEvaluator`, but `app/domain/` is missing from disk/git — the service currently cannot start until this module is restored.
+- FAISS does not work here — sklearn NearestNeighbors is the index backend.
+- No LangChain/LlamaIndex; everything is hand-rolled.
+- `history/` = abandoned pre-`app/` scripts (build_vector_store, search_kb, chatdoc_rag); `scripts/` = one-off test utilities; `Embedding_demo/` = official sample. Don't extend these; new work goes in `app/` + `ingest_knowledge.py`.
+- `vector_store/` artifacts are gitignored; after clone, run `python ingest_knowledge.py --scope base` before `/ready` will pass.

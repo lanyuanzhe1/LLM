@@ -15,7 +15,6 @@ IDENTIFIER_FIELDS = (
     "xf_workflow_flow_id",
 )
 SECRET_FIELDS = (
-    "xf_embedding_api_key",
     "xf_embedding_api_secret",
     "xf_maas_api_key",
     "xf_maas_api_secret",
@@ -24,7 +23,7 @@ SECRET_FIELDS = (
     "tools_service_token",
 )
 DURATION_FIELDS = (
-    "embedding_timeout_seconds",
+    "chatdoc_timeout_seconds",
     "maas_timeout_seconds",
     "workflow_timeout_seconds",
     "request_context_ttl_seconds",
@@ -143,7 +142,7 @@ def cloud_configuration_issues(settings: object) -> tuple[str, ...]:
             issues.append(field.upper())
 
     url_rules = (
-        ("embedding_url", "https", False),
+        ("chatdoc_url", "https", False),
         ("maas_url", "wss", True),
         ("workflow_url", "https", True),
     )
@@ -176,7 +175,6 @@ class Settings(BaseSettings):
     )
 
     xf_app_id: str
-    xf_embedding_api_key: SecretStr
     xf_embedding_api_secret: SecretStr
     xf_maas_api_key: SecretStr
     xf_maas_api_secret: SecretStr
@@ -186,16 +184,17 @@ class Settings(BaseSettings):
     xf_workflow_api_secret: SecretStr
     xf_workflow_flow_id: str
     tools_service_token: SecretStr
+    xf_chatdoc_repo_id: str | None = None
 
-    vector_store_dir: Path = Path("vector_store")
+    chatdoc_manifest_path: Path = Path("artifacts/chatdoc/base.json")
     retrieval_min_score: float = Field(default=0.35, ge=-1.0, le=1.0)
     log_level: str = "INFO"
-    embedding_url: str = "https://emb-cn-huabei-1.xf-yun.com/"
+    chatdoc_url: str = "https://chatdoc.xfyun.cn/"
     maas_url: str = "wss://maas-api.cn-huabei-1.xf-yun.com/v1.1/chat"
     workflow_url: str = (
         "https://xingchen-api.xf-yun.com/workflow/v1/chat/completions"
     )
-    embedding_timeout_seconds: float = 30.0
+    chatdoc_timeout_seconds: float = 60.0
     maas_timeout_seconds: float = 60.0
     workflow_timeout_seconds: float = 120.0
     request_context_ttl_seconds: float = 300.0
@@ -210,6 +209,16 @@ class Settings(BaseSettings):
     @field_validator(*IDENTIFIER_FIELDS)
     @classmethod
     def validate_identifier(cls, value: str) -> str:
+        normalized = _non_blank_string(value)
+        if normalized is None:
+            raise ValueError("must not be blank")
+        return normalized
+
+    @field_validator("xf_chatdoc_repo_id")
+    @classmethod
+    def validate_optional_chatdoc_repo_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = _non_blank_string(value)
         if normalized is None:
             raise ValueError("must not be blank")
@@ -231,9 +240,9 @@ class Settings(BaseSettings):
             raise ValueError("must be a visible ASCII bearer token")
         return normalized
 
-    @field_validator("embedding_url")
+    @field_validator("chatdoc_url")
     @classmethod
-    def validate_embedding_url(cls, value: str) -> str:
+    def validate_chatdoc_url(cls, value: str) -> str:
         normalized = _valid_service_url(
             value,
             scheme="https",

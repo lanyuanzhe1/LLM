@@ -8,7 +8,6 @@ from app.core.config import Settings
 
 REQUIRED_ENV = {
     "XF_APP_ID": "app-id",
-    "XF_EMBEDDING_API_KEY": "embedding-key",
     "XF_EMBEDDING_API_SECRET": "embedding-secret",
     "XF_MAAS_API_KEY": "maas-key",
     "XF_MAAS_API_SECRET": "maas-secret",
@@ -24,7 +23,6 @@ REQUIRED_ENV = {
 def configured_settings(**overrides) -> Settings:
     values = {
         "xf_app_id": "app-id",
-        "xf_embedding_api_key": "embedding-key",
         "xf_embedding_api_secret": "embedding-secret",
         "xf_maas_api_key": "maas-key",
         "xf_maas_api_secret": "maas-secret",
@@ -42,12 +40,15 @@ def configured_settings(**overrides) -> Settings:
 def test_settings_load_required_values(monkeypatch, tmp_path: Path):
     for key, value in REQUIRED_ENV.items():
         monkeypatch.setenv(key, value)
-    monkeypatch.setenv("VECTOR_STORE_DIR", str(tmp_path))
+    monkeypatch.setenv("XF_CHATDOC_REPO_ID", "repo-123")
+    monkeypatch.setenv("CHATDOC_MANIFEST_PATH", str(tmp_path / "chatdoc.json"))
 
     settings = Settings(_env_file=None)
 
     assert settings.xf_app_id == "app-id"
-    assert settings.vector_store_dir == tmp_path
+    assert settings.xf_chatdoc_repo_id == "repo-123"
+    assert settings.chatdoc_manifest_path == tmp_path / "chatdoc.json"
+    assert settings.chatdoc_url == "https://chatdoc.xfyun.cn/"
     assert settings.retrieval_min_score == 0.35
     assert settings.workflow_url.endswith("/workflow/v1/chat/completions")
     assert settings.maas_max_frames == 1024
@@ -57,6 +58,11 @@ def test_settings_load_required_values(monkeypatch, tmp_path: Path):
     assert settings.workflow_max_payload_bytes == 2_097_152
     assert settings.workflow_max_answer_chars == 32_000
     assert settings.gateway_max_buffer_chars == 32_000
+
+
+def test_settings_rejects_blank_chatdoc_repo_id():
+    with pytest.raises(ValidationError):
+        configured_settings(xf_chatdoc_repo_id="  ")
 
 
 def test_settings_reject_missing_secrets(monkeypatch):
@@ -90,7 +96,6 @@ def test_settings_reject_blank_required_identifiers(field):
 @pytest.mark.parametrize(
     "field",
     [
-        "xf_embedding_api_key",
         "xf_embedding_api_secret",
         "xf_maas_api_key",
         "xf_maas_api_secret",
@@ -110,10 +115,8 @@ def test_settings_reject_blank_required_secrets_without_echoing_values(field):
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("embedding_url", "http://embedding.invalid/"),
         ("workflow_url", "wss://workflow.invalid/v1/chat"),
         ("maas_url", "https://maas.invalid/v1/chat"),
-        ("embedding_url", "https:///embedding"),
         ("maas_url", "wss://maas.invalid"),
         ("workflow_url", "https://workflow.invalid"),
     ],
@@ -126,8 +129,6 @@ def test_settings_reject_insecure_or_incomplete_service_urls(field, value):
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("embedding_url", "https://embedding.invalid /v1/embeddings"),
-        ("embedding_url", "https://embedding.invalid/\nembeddings"),
         ("maas_url", "wss://maas.invalid/\tchat"),
         ("maas_url", "wss://maas\u200b.invalid/v1/chat"),
         (
@@ -148,19 +149,9 @@ def test_settings_reject_service_urls_with_raw_whitespace_or_controls(
     ("field", "value", "sentinel"),
     [
         (
-            "embedding_url",
-            "https://review-url-sentinel@embedding.invalid/v1",
-            "review-url-sentinel",
-        ),
-        (
             "xf_app_id",
             {"review": "review-identifier-sentinel"},
             "review-identifier-sentinel",
-        ),
-        (
-            "xf_embedding_api_key",
-            {"review": "review-secret-sentinel"},
-            "review-secret-sentinel",
         ),
     ],
 )
@@ -175,7 +166,6 @@ def test_settings_validation_errors_redact_rejected_input_values(
 
 
 @pytest.mark.parametrize("field", [
-    "embedding_timeout_seconds",
     "maas_timeout_seconds",
     "workflow_timeout_seconds",
     "request_context_ttl_seconds",

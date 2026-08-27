@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api import cases, chat, health, sources
-from app.clients.iflytek_embedding import IflytekEmbeddingClient
+from app.clients.iflytek_chatdoc import IflytekChatDocClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
 from app.core.config import (
@@ -17,13 +17,12 @@ from app.core.config import (
     cloud_configuration_issues,
     get_settings,
 )
-from app.core.errors import AppError, ConfigurationError, VectorStoreNotReady
+from app.core.errors import AppError, ConfigurationError
 from app.core.observability import RequestIdMiddleware
 from app.core.request_context import RequestContextStore
 from app.dependencies import ServiceContainer
 from app.domain.cases.rules import CaseEvaluator
-from app.rag.retriever import Retriever
-from app.rag.vector_store import VectorStore
+from app.rag.chatdoc_retriever import ChatDocRetriever, load_chatdoc_manifest
 from app.services.citation_validation import CitationValidator
 from app.services.generation import GenerationService
 from app.tools.routes import router as tools_router
@@ -45,46 +44,37 @@ def _register_startup_closeable(item: Closeable) -> None:
         closeables.append(item)
 
 
-class UnavailableRetriever:
-    def __init__(self, error: VectorStoreNotReady) -> None:
-        self.error = error
-
-    async def retrieve(self, request):
-        raise self.error
-
-
 def build_container(
     settings: Settings,
 ) -> tuple[ServiceContainer, tuple[Closeable, ...]]:
-    embedding_key = settings.xf_embedding_api_key.get_secret_value()
-    embedding_secret = settings.xf_embedding_api_secret.get_secret_value()
+    chatdoc_secret = settings.xf_embedding_api_secret.get_secret_value()
     maas_key = settings.xf_maas_api_key.get_secret_value()
     maas_secret = settings.xf_maas_api_secret.get_secret_value()
     workflow_key = settings.xf_workflow_api_key.get_secret_value()
     workflow_secret = settings.xf_workflow_api_secret.get_secret_value()
 
+    owned_closeables: list[Closeable] = []
+    if not settings.xf_chatdoc_repo_id:
+        raise ConfigurationError("必须配置讯飞 ChatDoc 知识库")
     try:
-        store = VectorStore.load(settings.vector_store_dir)
-    except VectorStoreNotReady as exc:
-        store = None
-        unavailable_error = exc
-
-    embedding = IflytekEmbeddingClient(
+        manifest = load_chatdoc_manifest(settings.chatdoc_manifest_path)
+    except (OSError, ValueError, TypeError) as exc:
+        raise ConfigurationError("讯飞知识库清单无效") from exc
+    if manifest.repo_id != settings.xf_chatdoc_repo_id:
+        raise ConfigurationError("讯飞知识库配置与清单不一致")
+    chatdoc = IflytekChatDocClient(
         app_id=settings.xf_app_id,
-        api_key=embedding_key,
-        api_secret=embedding_secret,
-        url=settings.embedding_url,
-        timeout_seconds=settings.embedding_timeout_seconds,
+        api_secret=chatdoc_secret,
+        base_url=settings.chatdoc_url,
+        timeout_seconds=settings.chatdoc_timeout_seconds,
     )
-    _register_startup_closeable(embedding)
-    if store is None:
-        retriever: Any = UnavailableRetriever(unavailable_error)
-    else:
-        retriever = Retriever(
-            store=store,
-            embedding=embedding,
-            min_score=settings.retrieval_min_score,
-        )
+    _register_startup_closeable(chatdoc)
+    owned_closeables.append(chatdoc)
+    retriever: Any = ChatDocRetriever(
+        client=chatdoc,
+        manifest=manifest,
+        min_score=settings.retrieval_min_score,
+    )
 
     maas = IflytekMaaSClient(
         app_id=settings.xf_app_id,
@@ -99,6 +89,7 @@ def build_container(
         max_answer_chars=settings.maas_max_answer_chars,
     )
     _register_startup_closeable(maas)
+    owned_closeables.append(maas)
     workflow = XingchenWorkflowClient(
         api_key=workflow_key,
         api_secret=workflow_secret,
@@ -110,16 +101,16 @@ def build_container(
         max_answer_chars=settings.workflow_max_answer_chars,
     )
     _register_startup_closeable(workflow)
+    owned_closeables.append(workflow)
     container = ServiceContainer(
         retriever=retriever,
         generation=GenerationService(maas),
         cases=CaseEvaluator(),
         citations=CitationValidator(),
         contexts=RequestContextStore(settings.request_context_ttl_seconds),
-        vector_store=store,
         workflow=workflow,
     )
-    return container, (embedding, maas, workflow)
+    return container, tuple(owned_closeables)
 
 
 async def _close_all(closeables: tuple[Closeable, ...]) -> None:

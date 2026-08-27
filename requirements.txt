@@ -1,9 +1,4 @@
 requests
-numpy
-scikit-learn
-tqdm
-PyMuPDF
-python-docx
 websocket-client
 websockets>=15,<17
 fastapi>=0.116,<1

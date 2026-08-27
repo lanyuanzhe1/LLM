@@ -5,7 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException, Request
-from starlette.exceptions import StarletteDeprecationWarning
+try:
+    from starlette.exceptions import StarletteDeprecationWarning
+except ImportError:
+    StarletteDeprecationWarning = DeprecationWarning
 
 with warnings.catch_warnings():
     warnings.filterwarnings(
@@ -145,7 +148,6 @@ def make_client(
         cases=FakeCases(),
         citations=FakeValidator(),
         contexts=contexts,
-        vector_store=None,
         workflow=None,
     )
     app = FastAPI()
