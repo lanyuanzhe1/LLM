@@ -11,6 +11,7 @@ os.environ["WEBUI_SECRET_KEY"] = "test-secret"
 os.environ["OPENAI_COMPAT_API_KEY"] = "test-compat-key"
 
 import pytest
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -44,3 +45,11 @@ def clean_db():
             await db.commit()
 
     asyncio.run(_wipe())
+
+
+@pytest.fixture()
+def client():
+    from webui.main import create_app
+
+    with TestClient(create_app()) as test_client:
+        yield test_client

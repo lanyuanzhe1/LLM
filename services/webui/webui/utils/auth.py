@@ -15,9 +15,10 @@ Deleted vs. reference:
 - Users.update_last_active_by_id fire-and-forget call (the method was not
   extracted with the Users model in Task 7).
 - Helpers unused by the kept set: extract_token_from_auth_header,
-  create_api_key, get_http_authorization_cred, get_verified_user_by_token,
+  create_api_key, get_verified_user_by_token,
   get_verified_user_by_id, get_optional_verified_user_from_request,
   create_admin_user, validate_password.
+  (get_http_authorization_cred was re-added in Task 9 for the auths router.)
 
 Imports retargeted: open_webui.env -> webui.settings,
 open_webui.constants -> webui.constants, open_webui.models -> webui.models.
@@ -112,6 +113,16 @@ def decode_token(token: str) -> dict | None:
     try:
         decoded = jwt.decode(token, SESSION_SECRET, algorithms=[ALGORITHM])
         return decoded
+    except Exception:
+        return None
+
+
+def get_http_authorization_cred(auth_header: str | None):
+    if not auth_header:
+        return None
+    try:
+        scheme, credentials = auth_header.split(' ')
+        return HTTPAuthorizationCredentials(scheme=scheme, credentials=credentials)
     except Exception:
         return None
 

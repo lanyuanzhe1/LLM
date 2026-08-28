@@ -5,6 +5,8 @@ Trimmed from open_webui.models.users (see task-7 report):
   methods, status/presence methods, group/channel-filtered branches inside
   ``get_users`` (those models are not extracted), and the response/form
   classes not needed by the kept method set.
+- Re-added in Task 9 (verbatim): ``UserStatus``, ``UserNameResponse``,
+  ``UserProfileImageResponse`` — response bases for the auths router.
 """
 
 from __future__ import annotations
@@ -131,6 +133,23 @@ class UserModel(BaseModel):
     @classmethod
     def normalize_variables(cls, value):
         return value if isinstance(value, dict) else {}
+
+
+class UserStatus(BaseModel):
+    status_emoji: str | None = None
+    status_message: str | None = None
+    status_expires_at: int | None = None
+
+
+class UserNameResponse(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class UserProfileImageResponse(UserNameResponse):
+    email: str
+    profile_image_url: str
 
 
 class UsersTable:

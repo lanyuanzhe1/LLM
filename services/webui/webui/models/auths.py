@@ -1,12 +1,12 @@
 """Auth credential models and data-access layer.
 
 Trimmed from open_webui.models.auths (see task-7 report):
-- Dropped: ApiKey pydantic model, LdapForm, SigninResponse (depends on the
-  un-extracted UserProfileImageResponse), PLACEHOLDER_HASH/bcrypt import,
-  and the Auths methods ``authenticate_user``,
+- Dropped: ApiKey pydantic model, LdapForm, and the Auths methods
   ``authenticate_user_by_api_key``, ``update_email_by_id``,
   ``delete_auth_by_id`` (they reference dropped Users methods or the
   un-extracted api-key path).
+- Re-added in Task 9 (verbatim): ``PLACEHOLDER_HASH``, ``SigninResponse``,
+  and ``Auths.authenticate_user`` — required by the auths router.
 """
 
 from __future__ import annotations
@@ -14,8 +14,9 @@ from __future__ import annotations
 import logging
 import uuid
 
+import bcrypt
 from webui.internal.db import Base, get_async_db_context
-from webui.models.users import User, UserModel, Users
+from webui.models.users import User, UserModel, UserProfileImageResponse, Users
 from webui.utils.validate import validate_profile_image_url
 from pydantic import BaseModel, field_validator
 from sqlalchemy import Boolean, Column, String, Text, select
@@ -23,6 +24,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = logging.getLogger(__name__)
+
+# Pre-computed hash verified on signin paths that lack a real credential
+# (unknown user, inactive account) so response timing cannot reveal
+# whether an account exists (CWE-208).
+PLACEHOLDER_HASH = bcrypt.hashpw(b'placeholder', bcrypt.gensalt()).decode('utf-8')
 
 
 class Auth(Base):  # credential ↔ user linkage
@@ -50,6 +56,10 @@ class Token(BaseModel):
 
     token: str
     token_type: str
+
+
+class SigninResponse(Token, UserProfileImageResponse):
+    pass
 
 
 class SigninForm(BaseModel):
@@ -129,6 +139,28 @@ class AuthsTable:
                 await session.rollback()
                 raise
             return created_user if credential and created_user else None
+
+    async def authenticate_user(
+        self,
+        email: str,
+        verify_password: callable,
+        db: AsyncSession | None = None,
+    ) -> UserModel | None:
+        """Verify email + password credentials and return the matching user."""
+        log.info('authenticate_user: %s', email)
+        resolved = await Users.get_user_by_email(email, db=db)
+        if not resolved:
+            await verify_password(PLACEHOLDER_HASH)
+            return
+        # load the credential row and verify the password hash
+        async with get_async_db_context(db) as session:
+            credential = await session.get(Auth, resolved.id)
+            if not credential or not credential.active:
+                await verify_password(PLACEHOLDER_HASH)
+                return
+            if not await verify_password(credential.password):
+                return
+            return resolved
 
     async def authenticate_user_by_email(
         self,

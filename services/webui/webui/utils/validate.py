@@ -4,6 +4,19 @@ import os
 import re
 from urllib.parse import urlparse
 
+from webui.constants import ERROR_MESSAGES
+from webui.settings import (
+    ENABLE_PASSWORD_VALIDATION,
+    PASSWORD_HASH_ALGORITHM,
+    PASSWORD_VALIDATION_HINT,
+    PASSWORD_VALIDATION_REGEX_PATTERN,
+)
+
+# Mirrors webui.utils.auth.PASSWORD_BCRYPT_MAX_BYTES; duplicated here because
+# importing webui.utils.auth would create an import cycle
+# (auth -> models.users -> utils.validate).
+PASSWORD_BCRYPT_MAX_BYTES = 72
+
 # Inlined from open_webui.env (kept local to keep webui/settings.py to its
 # curated symbol list); same env-var names and defaults as the reference.
 PROFILE_IMAGE_ALLOWED_MIME_TYPES = frozenset(
@@ -96,3 +109,24 @@ def validate_profile_image_url(url: str) -> str:
         'Invalid profile image URL: must be a known internal path, '
         'an HTTP(S) URL with a host, or a data:image URI (png/jpeg/gif/webp).'
     )
+
+
+def validate_email_format(email: str) -> bool:
+    if email.endswith('@localhost'):
+        return True
+
+    return bool(re.match(r'[^@]+@[^@]+\.[^@]+', email))
+
+
+def validate_password(password: str) -> bool:
+    # bcrypt only accepts 72 bytes; reject long new passwords instead of storing an unusable hash.
+    if PASSWORD_HASH_ALGORITHM == 'bcrypt' and len(password.encode('utf-8')) > PASSWORD_BCRYPT_MAX_BYTES:
+        raise Exception(
+            ERROR_MESSAGES.PASSWORD_TOO_LONG,
+        )
+
+    if ENABLE_PASSWORD_VALIDATION:
+        if not PASSWORD_VALIDATION_REGEX_PATTERN.match(password):
+            raise Exception(ERROR_MESSAGES.INVALID_PASSWORD(PASSWORD_VALIDATION_HINT))
+
+    return True
