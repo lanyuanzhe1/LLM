@@ -1,0 +1,377 @@
+{
+  "schema_version": 1,
+  "backend": "iflytek_chatdoc",
+  "repo_id": "0a13762a64ed43dfa5102c0c4feb735d",
+  "repo_name": "粮食储藏知识库-20260828-140705",
+  "source_root": "knowledge",
+  "created_at": "2026-08-28T11:43:52.957578+00:00",
+  "sources": {
+    "其他论文/低温储粮技术应用进展研究_胡坤.pdf": {
+      "sha256": "dfb5fb18407a18f35fb35326f545bd5453cda623e1bea59cdda47865ec4231dd",
+      "size_bytes": 1242642,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "63ee8c37ba9847038d355d6a1b4e5f42",
+          "upload_name": "其他论文__低温储粮技术应用进展研究_胡坤.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/储粮害虫植物源驱避物质的研究和应用_王争艳.pdf": {
+      "sha256": "3f9af288540334066509801f8a5077814898c41328a8b254b8162f0605b8bc7a",
+      "size_bytes": 1365488,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "3a522fd6355b4be8b4162a36b5496e68",
+          "upload_name": "其他论文__储粮害虫植物源驱避物质的研究和应用_王争艳.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/储粮害虫防治技术进展与展望（下）——综合防治技术篇（网络首发、推荐阅读）.pdf": {
+      "sha256": "b92b37ab380ff2f19fdf8012a472e16e83d0e041e9ed3bde3d16d3424260362e",
+      "size_bytes": 399938,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "622727b6332e40939c93aca3edcb8a4d",
+          "upload_name": "其他论文__储粮害虫防治技术进展与展望（下）——综合防治技术篇（网络首发、推荐阅读）.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/储藏物害虫综合治理课程研究性教学实践探索_王争艳.pdf": {
+      "sha256": "2ecb8b042bb51d3451d44d882d1b65de5bc7d4556c3ed4b0219f1d703736a820",
+      "size_bytes": 2032367,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "3ba4b5de0afc4070a511ca1d0920bb30",
+          "upload_name": "其他论文__储藏物害虫综合治理课程研究性教学实践探索_王争艳.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/基于粮食行业特色优势的“粮油储藏学（A）”线上课程设计及持续建设计划研究_赵妍.pdf": {
+      "sha256": "21b61ee200c6fd66819fb8b937b8b238768ae668ec6b2165ce7088ed9ae51477",
+      "size_bytes": 1642564,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "7401c2fb04d243029f4c940a83686cb8",
+          "upload_name": "其他论文__基于粮食行业特色优势的“粮油储藏学（A）”线上课程设计及持续建设计划研究_赵妍.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/多杀霉素综合防治储粮害虫技术研究_郭超.pdf": {
+      "sha256": "07b18cbfd987232415ca2c4f2fc0935e53a6c3d6707ef35b5456c4e0cd61ae45",
+      "size_bytes": 1322689,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "d7c81a180e944ce79b5ed637e5013067",
+          "upload_name": "其他论文__多杀霉素综合防治储粮害虫技术研究_郭超.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/当前基层粮油仓储工作的问题及对策_汪文忠.pdf": {
+      "sha256": "8a558800308b6a7dc2b289a7544e6b81a0b21a772cbd0c03ac3d155b0ef06b05",
+      "size_bytes": 153780,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "e1545ebdfc0e4b5a95bd3fc24c8d7c52",
+          "upload_name": "其他论文__当前基层粮油仓储工作的问题及对策_汪文忠.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/新形势下确保粮油安全的措施分析_孙连贵.pdf": {
+      "sha256": "3c93e11035dea4d594cae0a174a7d799e4e227f04a823f6e5961c41fd0fdad25",
+      "size_bytes": 1849834,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "3ff5787e13a54b6890bfa441bf5169db",
+          "upload_name": "其他论文__新形势下确保粮油安全的措施分析_孙连贵.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "其他论文/浅谈粮油安全存储管理策略_张秋平.pdf": {
+      "sha256": "c283a324c715830b07b778cec0697d963dfd3f03636e41ce1d63d8c90a6212a7",
+      "size_bytes": 1504293,
+      "source_type": "其他论文",
+      "uploads": [
+        {
+          "file_id": "ab46931f74c7423b8f07b36e5c96cc40",
+          "upload_name": "其他论文__浅谈粮油安全存储管理策略_张秋平.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "政策文件类/29890-2013-gbt-e-300.pdf": {
+      "sha256": "c261aede0031a121e5368baa55e72d28d281e92c01eb4c5c6d0722c7592bf925",
+      "size_bytes": 852516,
+      "source_type": "政策文件类",
+      "uploads": [
+        {
+          "file_id": "b410b8fac8c14ce0a865913d167e28d5",
+          "upload_name": "政策文件类__29890-2013-gbt-e-300.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "政策文件类/中华人民共和国粮食安全保障法_20231229.docx": {
+      "sha256": "db5230bc6aab4586b9693fed304306538152668e6d981ff624f51b22c8a2acb2",
+      "size_bytes": 27625,
+      "source_type": "政策文件类",
+      "uploads": [
+        {
+          "file_id": "85d183c100e04da490e7b568e42d6733",
+          "upload_name": "政策文件类__中华人民共和国粮食安全保障法_20231229.docx",
+          "status": "vectored"
+        }
+      ]
+    },
+    "政策文件类/河南省粮食安全保障条例.pdf": {
+      "sha256": "164d056bf877b9efe9abbcaed1edf7db00d2ef10d96f4dde2120db0c6a35295f",
+      "size_bytes": 4632404,
+      "source_type": "政策文件类",
+      "uploads": [
+        {
+          "file_id": "d6a8ac61da7541e3a6ba622ffe2887dd",
+          "upload_name": "政策文件类__河南省粮食安全保障条例.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/储粮昆虫学：储藏物昆虫的分类.pptx": {
+      "sha256": "79d968bfb2d121f0970ae484a9fbbaadf2e59dd6762d82f945f74e4d8e5e08ec",
+      "size_bytes": 16477840,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "128c9bea2ff448159beddbe7f3e30a59",
+          "upload_name": "新增书本与PPT__储粮昆虫学：储藏物昆虫的分类.pptx",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/储藏物害虫综合治理.pdf": {
+      "sha256": "110f1d4fc450e0d9adf874116f7c3112e28e79ff3827373f518053c3d97e1240",
+      "size_bytes": 2162909,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "d15904fc3e244b1d997a981213827abc",
+          "upload_name": "新增书本与PPT__储藏物害虫综合治理.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/典型农产品干燥技术与智能化装备.pdf": {
+      "sha256": "1073597e03cdf62e28334005f2e23ed88b263c94e44f25f75f988e938a180ca2",
+      "size_bytes": 3574485,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "f37a3b9a19c243f291c3a44105b1c8d5",
+          "upload_name": "新增书本与PPT__典型农产品干燥技术与智能化装备.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/建标172-2016《粮食仓库建设标准》.pdf": {
+      "sha256": "71f15e28fda9b3636157d5db39b98fed4d82e4ead1c587d2ed4a2f3f79cb726b",
+      "size_bytes": 656566,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "c9fd302a19c74e84bbf95e052980ed01",
+          "upload_name": "新增书本与PPT__建标172-2016《粮食仓库建设标准》.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/智慧仓储物流.pdf": {
+      "sha256": "2eaf8e6450d9a4053131eed65cdb5ca0a98b96bef1a14fb70d9e160b7ed6fd00",
+      "size_bytes": 5280938,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "eb7708c88ec14f8c840549eb622fc4b8",
+          "upload_name": "新增书本与PPT__智慧仓储物流.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/智慧储运解决方案.pptx": {
+      "sha256": "a76869e42903f202b83c497af69d2c9d8aa8567156652d970aea98b006457fb8",
+      "size_bytes": 5453601,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "b1d0bc21313344cf8bf48009bb2cf180",
+          "upload_name": "新增书本与PPT__智慧储运解决方案.pptx",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮油仓储管理基础知识.ppt": {
+      "sha256": "f0c1a69d1ce606af378ce343232140c435bdbf8d101352d419b9c108787cc47f",
+      "size_bytes": 5965312,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "ece8fa41166f4c2bb87f1041b95728b2",
+          "upload_name": "新增书本与PPT__粮油仓储管理基础知识.ppt",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮油储藏基础知识.pdf": {
+      "sha256": "76e316225b5a3848c61f1450abfb55e64ac7fced34f29894d500d16d98d2e772",
+      "size_bytes": 591506,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "6229eb46452343e087c74da94424c247",
+          "upload_name": "新增书本与PPT__粮油储藏基础知识.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮油储藏学A.pdf": {
+      "sha256": "538a0ee245ec20c552998dfef2ee5444a64e6924e0c81d60b4f5976eefb6ec2a",
+      "size_bytes": 1074504,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "bf7cd3084f55414aa6c31907142ffccd",
+          "upload_name": "新增书本与PPT__粮油储藏学A.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮油品质检验与分析粮油检验基础知识.ppt": {
+      "sha256": "6c59a6a19c9a4679a2aec512b41b0d0c12e970fdcdd22c3a5776b428a099087e",
+      "size_bytes": 3186688,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "789504a369d44b2c8c3ddb27ea028087",
+          "upload_name": "新增书本与PPT__粮油品质检验与分析粮油检验基础知识.ppt",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮油贮藏与加工技术ppt课件.ppt": {
+      "sha256": "844fb5776caf3d5ff88b3565ea6906120322e85f414faa2b4fab9572e4422a43",
+      "size_bytes": 308736,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "375846af8372400d85915a1b39bba77f",
+          "upload_name": "新增书本与PPT__粮油贮藏与加工技术ppt课件.ppt",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/粮食干燥绿色低碳技术现状与展望.pdf": {
+      "sha256": "b0e8cfd8c1199993e02c79af43993db58e5c98cbf7407b271e6cbc1c610e68bc",
+      "size_bytes": 591033,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "40e8e4d121f74cd39e9fe45cb5129793",
+          "upload_name": "新增书本与PPT__粮食干燥绿色低碳技术现状与展望.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "新增书本与PPT/高标准粮仓建设标准.pdf": {
+      "sha256": "0511f59b25bafcfd025104608da0d3a94bf4be9bf9ed0b2fcedcfc9e3a6aee1d",
+      "size_bytes": 454715,
+      "source_type": "新增书本与PPT",
+      "uploads": [
+        {
+          "file_id": "90bf31601a564c5da7ef02ad313ddace",
+          "upload_name": "新增书本与PPT__高标准粮仓建设标准.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "河南工业大学论文/利用气体传感器监测储粮霉菌活动的研究_耿旭.pdf": {
+      "sha256": "9e90982b68ff86d3316ad05a0b4053974872b824a1c6b1f1bda168c8a0cc60e3",
+      "size_bytes": 1538379,
+      "source_type": "河南工业大学论文",
+      "uploads": [
+        {
+          "file_id": "97eced1578fa4458bbc9fa57832e4824",
+          "upload_name": "河南工业大学论文__利用气体传感器监测储粮霉菌活动的研究_耿旭.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "河南工业大学论文/基于BIM的智能粮库管理系统的设计与实现_谷锦妍.pdf": {
+      "sha256": "e2419befa7156537caf4a04a031919a762fdd7bd6283e647608a1e6deb995580",
+      "size_bytes": 5012934,
+      "source_type": "河南工业大学论文",
+      "uploads": [
+        {
+          "file_id": "565c8a3acd3c41f79b55205aaf2a7600",
+          "upload_name": "河南工业大学论文__基于BIM的智能粮库管理系统的设计与实现_谷锦妍.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "河南工业大学论文/基于区块链的粮油食品溯源视频监控数据存储共享研究_崔光远.pdf": {
+      "sha256": "9ef73cf798bfa9e82a5b216de390cb1c400392d3d596286efb3383adbd23058e",
+      "size_bytes": 7003970,
+      "source_type": "河南工业大学论文",
+      "uploads": [
+        {
+          "file_id": "ba88f719bf4c4444be656bb1468f34e5",
+          "upload_name": "河南工业大学论文__基于区块链的粮油食品溯源视频监控数据存储共享研究_崔光远.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "河南工业大学论文/温度对储粮安全水分及微生物活动速率的影响_张航.pdf": {
+      "sha256": "6bbcf028945086413a249442e0f8dc7c2dd7e054104cc98e6db6cdcbd552663a",
+      "size_bytes": 12684576,
+      "source_type": "河南工业大学论文",
+      "uploads": [
+        {
+          "file_id": "54123987049c4731a2e55045ef6306b7",
+          "upload_name": "河南工业大学论文__温度对储粮安全水分及微生物活动速率的影响_张航.pdf",
+          "status": "vectored"
+        }
+      ]
+    },
+    "河南工业大学论文/面向粮食仓储的密集状态小麦质量实时检测方法_范嘉伟.pdf": {
+      "sha256": "47859ed1a43bcebc884797fe1e140ffc2f9ab864cae2dcfacbb43aa264092bd4",
+      "size_bytes": 5664441,
+      "source_type": "河南工业大学论文",
+      "uploads": [
+        {
+          "file_id": "be1d2f584e51443ca262117b699cabd2",
+          "upload_name": "河南工业大学论文__面向粮食仓储的密集状态小麦质量实时检测方法_范嘉伟.pdf",
+          "status": "vectored"
+        }
+      ]
+    }
+  },
+  "skipped_sources": [
+    {
+      "source": "河南工业大学论文/储粮中粮食自身呼吸与霉菌活动产生CO_2的特点_张燕燕.pdf",
+      "reason": "oversized",
+      "size_bytes": 39931279
+    }
+  ]
+}
