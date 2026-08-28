@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import cases, chat, health, sources
+from app.api import cases, chat, health, openai_compat, sources
 from app.clients.iflytek_chatdoc import IflytekChatDocClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
@@ -175,12 +175,20 @@ def create_app(
     if container is not None:
         application.state.container = container
     application.add_middleware(RequestIdMiddleware)
+    application.middleware("http")(openai_compat.auth_middleware)
 
     @application.exception_handler(RequestValidationError)
     async def request_validation_error_handler(
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
+        if request.url.path == "/v1/chat/completions":
+            return openai_compat.openai_error_response(
+                status_code=422,
+                message="聊天请求无效",
+                error_type="invalid_request_error",
+                code="invalid_request_error",
+            )
         detail = [
             {
                 "loc": [
@@ -205,6 +213,7 @@ def create_app(
         )
 
     application.include_router(health.router)
+    application.include_router(openai_compat.router)
     application.include_router(chat.router)
     application.include_router(cases.router)
     application.include_router(sources.router)
