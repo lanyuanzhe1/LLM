@@ -10,6 +10,10 @@ Trimmed from open_webui.models.chats (see task-7 report):
 - ``delete_chat_by_id_and_user_id``: AutomationRun update removed
   (automations not extracted); shared-chat cleanup removed (shared_chats
   not extracted) — returns True right after commit.
+- ``get_chat_by_id``: added in Task 10/12 (reference method trimmed of its
+  sanitize/repair side effects) so routers can distinguish "chat does not
+  exist" from "chat exists but belongs to another user" before applying
+  the owner-only 404 semantics.
 - Dropped: everything referencing access_grants/automations/folders/tags/
   shared_chats/files/groups/utils.access_control, all search/pin/archive/
   folder/tag/stats/import methods, ChatFile/ChatFileModel, and the
@@ -466,6 +470,19 @@ class ChatTable:
                 )
                 for chat in all_chats
             ]
+
+    async def get_chat_by_id(self, id: str, db: AsyncSession | None = None) -> ChatModel | None:
+        """Fetch a chat by id regardless of owner (ownership check left to callers)."""
+        try:
+            async with get_async_db_context(db) as session:
+                result = await session.execute(select(Chat).filter_by(id=id))
+                chat = result.scalars().first()
+                if not chat:
+                    return None
+
+                return ChatModel.model_validate(chat)
+        except Exception:
+            return None
 
     async def get_chat_by_id_and_user_id(
         self, id: str, user_id: str, db: AsyncSession | None = None
