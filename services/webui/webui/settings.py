@@ -23,6 +23,10 @@ FRONTEND_BUILD_DIR = os.environ.get(
 )
 CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
 
+ENABLE_ADMIN_CHAT_ACCESS = (
+    os.environ.get("ENABLE_ADMIN_CHAT_ACCESS", "false").strip().lower() == "true"
+)
+
 
 def validate_startup() -> None:
     if WEBUI_AUTH and not WEBUI_SECRET_KEY:
