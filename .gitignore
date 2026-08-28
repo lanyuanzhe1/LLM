@@ -22,3 +22,4 @@ workflow/
 .codex/
 
 CLAUDE.md
+services/webui/data/
