@@ -3,7 +3,7 @@
 Task 9 lands only what the auth E2E flow needs: lifespan (startup validation,
 table creation, idempotent Config seeding) + the auths router + CORS.
 Task 11 extends this with version/config/models endpoints and static hosting.
-Task 10 mounts the chats router (list/detail/delete); Task 12 adds the slim
+Tasks 10/12 mount the chats router (list/detail/delete) and the slim
 /api/chat/completions orchestrator.
 """
 
@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webui.internal.db import create_all_tables
 from webui.models.config import Config
-from webui.routers import auths, chats
+from webui.routers import auths, chats, completions
 from webui.settings import (
     CORS_ALLOW_ORIGIN,
     FRONTEND_BUILD_DIR,
@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(auths.router, prefix='/api/v1/auths', tags=['auths'])
     app.include_router(chats.router, prefix='/api/v1/chats', tags=['chats'])
+    app.include_router(completions.router, prefix='/api/chat', tags=['chat'])
 
     @app.get('/api/version')
     async def version():
