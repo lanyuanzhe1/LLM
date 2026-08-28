@@ -11,6 +11,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DATA_DIR}/webui.db")
 WEBUI_SECRET_KEY = os.environ.get("WEBUI_SECRET_KEY", "")
 WEBUI_AUTH = os.environ.get("WEBUI_AUTH", "true").strip().lower() != "false"
 JWT_EXPIRES_IN = os.environ.get("JWT_EXPIRES_IN", "4w")
+PASSWORD_HASH_ALGORITHM = os.environ.get("PASSWORD_HASH_ALGORITHM", "bcrypt").lower()
 
 APP_UPSTREAM_BASE_URL = os.environ.get(
     "APP_UPSTREAM_BASE_URL", "http://127.0.0.1:8000"
