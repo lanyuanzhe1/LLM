@@ -293,7 +293,12 @@ async def _agen(frames):
 
 
 def _sse_payloads(text: str) -> list[str]:
-    return [part[5:] for part in text.strip().split("\n\n") if part.startswith("data: ")]
+    prefix = "data: "
+    return [
+        part[len(prefix):]
+        for part in text.strip().split("\n\n")
+        if part.startswith(prefix)
+    ]
 
 
 async def test_stream_emits_chunks_sources_and_done():
@@ -313,10 +318,13 @@ async def test_stream_emits_chunks_sources_and_done():
         )
     ])
     payloads = _sse_payloads(text)
+    # 流顺序：role chunk → status(running) → status(complete) → 内容 chunks → source → finish → [DONE]
     assert '"role":"assistant"' in payloads[0]
-    assert '"content":"低温"' in payloads[1]
-    assert any('"type":"status"' in p for p in payloads)
-    assert any('"type":"source"' in p and "unknown-evidence" not in p for p in payloads)
+    assert any('"content":"低温"' in p for p in payloads)
+    assert any('"content":"储粮"' in p for p in payloads)
+    statuses = [p for p in payloads if '"type":"status"' in p]
+    assert len(statuses) == 2 and '"done":false' in statuses[0] and '"done":true' in statuses[1]
+    assert any('"type":"source"' in p and '"e1"' in p for p in payloads)
     assert '"finish_reason":"stop"' in payloads[-2]
     assert payloads[-1] == "[DONE]"
 
