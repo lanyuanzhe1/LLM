@@ -22,6 +22,7 @@ def _settings() -> Settings:
         xf_workflow_flow_id="flow-id",
         tools_service_token="tool-token",
         xf_chatdoc_repo_id="repo-123",
+        openai_compat_api_key="test-compat-key",
     )
 
 
