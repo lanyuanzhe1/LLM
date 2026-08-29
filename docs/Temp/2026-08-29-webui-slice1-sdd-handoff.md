@@ -1,7 +1,7 @@
 # `webui` 分支 Slice 1 SDD 执行交接
 
-> 日期：2026-08-29
-> 下一会话焦点：完成 Slice 1（登录→聊天→历史端到端）的剩余任务：Task 10+12 fix round 1 收尾、Task 13 验证、Phase C 前端（Tasks 14-16）、全分支终审与收尾。
+> 日期：2026-08-29（第二次更新：Task 10+12 fix round 已闭环，Phase B 全绿，Task 14 已实现待审）
+> 下一会话焦点：Task 14 审查 → Task 15 聊天页 → Task 16 占位路由与联调 → 全分支终审 → 收尾合并。
 > 执行方式：superpowers:subagent-driven-development（控制器 + 每任务实现者/审查者），已有进度全部记录在 ledger。
 
 ## 1. 仓库与执行状态
@@ -23,26 +23,18 @@
 | Task 8 | fd34523 | utils/auth + misc.parse_duration（删 api-key/加密 token/redis 吊销） |
 | Task 9 | 6ac096c | auths 路由 + 最小 create_app（三处显式偏离：开放注册不关闭、无群组装配、permissions={}/头像=""） |
 | Task 11 | 9ac30b5 | main 补全（/api/version、/api/config、/api/models 代理、SPA 托管）+ upstream.py |
-| Task 10+12 | bf5e25d, a5d64df | chats 路由（404 属主语义）+ slim /api/chat/completions（chat_id 首帧、字节透传、消息图落库、失败整轮回滚）。15 passed |
+| Task 10+12 | bf5e25d, a5d64df, 166642a | chats 路由（404 属主语义）+ slim /api/chat/completions（chat_id 首帧、字节透传、消息图落库、失败整轮回滚）+ fix round 1（增量 UTF-8 解码修复，re-review 全 ADDRESSED）。16 passed |
+| Task 13 | — | Phase B 全量验证（控制器直接执行）：services/webui 16 passed；app 离线 661 passed, 4 deselected |
+| Task 14 | 2cc487d | frontend/webui 骨架：SvelteKit 2 SPA + Tailwind 4、/auth 双模式页、(app) 守卫 layout + 侧边栏、占位路由、auths API 6 单测；npm build 通过。**审查尚未派发——下一会话第一件事**（BASE=166642a，报告在 task-14-report.md） |
 
-## 3. 当前中断点：Task 10+12 fix round 1（未完成）
+## 3. 当前位置：Phase C 进行中
 
-审查发现 1 个 Important：旁路 SSE 缓冲按块 `decode(errors='replace')` 会腐蚀跨 chunk 的中文（落库文本出 U+FFFD）。实现者修复到一半时因 API 额度 403 中断。
+fix round 已闭环（上版交接的 §3 中断点已解决，含 mock 改 `_ByteChunks` AsyncByteStream 子类的实际修法）。剩余：
 
-**工作区现状（未提交，3 个文件，+93/-28）：**
-- `webui/routers/completions.py`：增量解码修复（`codecs.getincrementaldecoder('utf-8')`）已应用。
-- `tests/conftest.py`：新增 `split_chunk_upstream` fixture —— **问题在这里**：`httpx.Response(200, content=[bytes1, bytes2])`（list 内容）导致 `client.stream()` 在发送时抛异常（httpx 0.28.1 MockTransport 对 iterable content 的 async stream 支持问题），于是该路径整轮回滚、chat 被删，测试 GET 拿到 404 体 → `KeyError: 'chat'`。
-- `tests/test_completions.py`：新增回归测试 `test_completion_multibyte_delta_split_across_chunks`（断言落库文本无 U+FFFD 且完整）。
-
-**修复方向**：把 mock 改为 `httpx.Response(200, headers=..., stream=<AsyncByteStream>)`——手写一个最小 `httpx.AsyncByteStream` 子类（`async def __aiter__` 逐块 yield），不要传 list content。
-
-**收尾步骤**：修 mock → `cd services/webui && python -m pytest -q` 全绿（应 16 passed）→ commit（`fix(webui-service): incremental utf-8 decode for SSE side-buffer`）→ 生成 fix 审查包（FIX_BASE=a5d64df）→ 派发 scoped re-review（模板在 superpowers subagent-driven-development 技能的 re-review-prompt.md；findings 清单见 task-10-12-report.md 与 progress.md）→ 全绿后 ledger 记 `Task 10+12: fix round 1/5 (1 addressed, 0 open)` 与 `complete`。
-
-## 4. 剩余任务
-
-- **Task 13**：Phase B 全量验证（services/webui 套件 + 仓库根 `python -m pytest -m "not online" -q`）。
-- **Phase C（Task 14-16）**：`frontend/webui` SvelteKit 骨架 + /auth 页 + 守卫 layout → 聊天页（SSE 解析 `src/lib/utils/sse.ts` 完整代码在计划里）→ 占位路由 + 联调。计划中有完整规格。
-- **终审**：`scripts/review-package PLAN_FILE 31765ec HEAD` 生成全分支包，用最强模型按 requesting-code-review/code-reviewer.md 终审；ledger 中的 deferred minors 交给它分诊。
+- **Task 14 审查**（紧迫）：生成审查包（`scripts/review-package PLAN_FILE 166642a 2cc487d`）派发任务审查员。注意实现者自报疑虑：Svelte 5 下用了旧式 `on:click` 语法、登录成功固定回 `/`。
+- **Task 15**：聊天页（发送→流式渲染→历史恢复）。计划中 `src/lib/utils/sse.ts` 有完整代码；后端 chat_id 首帧契约、source/status/error 扩展事件已在 services/webui 落地（16 passed 钉住）。
+- **Task 16**：knowledge/agents/settings 占位路由 + 离线联调验证 + 全量测试与构建。
+- **终审**：`scripts/review-package PLAN_FILE 31765ec HEAD` 生成全分支包，用最强模型按 requesting-code-review/code-reviewer.md 终审；ledger 中的 deferred minors 交给它分诊（含：preflight 时序用例 flake 风险、task_type 忽略契约用例、owned_by 命名残留、JWT 无吊销、cookie-only 正向用例、登录无限流等）。
 - **收尾**：superpowers:finishing-a-development-branch；推送分支并请用户合并回 `webui`；汇总所有 Ruling 给用户。
 
 ## 5. 关键裁决（Ruling）速查（详见 ledger）
@@ -74,11 +66,11 @@
 继续执行 LLM 仓库 webui 产品 Slice 1 的 SDD 流程。工作区是 worktree /Users/lanyuanzhe/Documents/GitHub/LLM/.claude/worktrees/webui-product（分支 worktree-webui-product），不要切回主检出。
 
 开始前依次阅读：
-1. docs/Temp/2026-08-29-webui-slice1-sdd-handoff.md（本交接，含当前中断点与修复方向）
+1. docs/Temp/2026-08-29-webui-slice1-sdd-handoff.md（本交接）
 2. .superpowers/sdd/2026-08-28-webui-slice1-chat-e2e/progress.md（ledger，恢复执行位置）
-3. docs/superpowers/plans/2026-08-28-webui-slice1-chat-e2e.md（计划全文）
+3. docs/superpowers/plans/2026-08-28-webui-slice1-chat-e2e.md（计划全文，Phase C 部分）
 
-当前最优先事项：Task 10+12 fix round 1 收尾——工作区有 3 个未提交文件（增量 UTF-8 解码修复 + 回归测试），回归测试因 conftest 的 split_chunk_upstream mock 用 list content 触发 httpx client.stream 异常而红；按交接 §3 的方向把 mock 改为 AsyncByteStream，跑绿 services/webui 全套件后提交，再做 scoped re-review。随后按 ledger 继续 Task 13、Phase C（Tasks 14-16）、终审与分支收尾。
+当前最优先事项：Task 14（frontend/webui 骨架，commit 2cc487d）已实现但审查未派发——先生成审查包（review-package PLAN_FILE 166642a 2cc487d）并派发任务审查员。随后按 ledger 继续 Task 15（聊天页+SSE）、Task 16（占位路由+联调）、全分支终审与分支收尾（finishing-a-development-branch）。
 
-约束：Python 用 /opt/homebrew/Caskroom/miniconda/base/envs/LLM/bin/python；pytest 在 services/webui/ 下运行；禁止 Mock 运行模式；不动 example/openwebui/；提交落在 worktree-webui-product 分支。
+约束：Python 用 /opt/homebrew/Caskroom/miniconda/base/envs/LLM/bin/python；pytest 在 services/webui/ 下运行；前端用 node v26/npm 11；禁止 Mock 运行模式；不动 example/openwebui/；提交落在 worktree-webui-product 分支。
 ```
