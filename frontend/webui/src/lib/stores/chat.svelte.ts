@@ -182,8 +182,12 @@ export const sendMessage = async (rawContent: string): Promise<void> => {
 	try {
 		model = await ensureModelId(token);
 	} catch {
-		session.errorMessage = '模型列表获取失败，请稍后重试';
-		session.generating = false;
+		// 与成功路径对称：await 期间已切换会话（reset 已 bump runId），
+		// 本次失败与当前会话无关，不得清掉新会话飞行中的守卫或写错误横幅
+		if (session.runId === startRun) {
+			session.errorMessage = '模型列表获取失败，请稍后重试';
+			session.generating = false;
+		}
 		return;
 	}
 	if (session.runId !== startRun) return; // await 期间已切换会话，放弃本次发送

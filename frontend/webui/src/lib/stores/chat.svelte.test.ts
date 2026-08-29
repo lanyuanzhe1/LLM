@@ -40,6 +40,30 @@ describe('sendMessage 双重发送守卫', () => {
 		void first; // 首个调用永远悬置，测试进程无需等待
 	});
 
+	it('await 期间切换会话后，旧发送的失败不复位新会话状态', async () => {
+		let rejectA!: (reason: Error) => void;
+		vi.mocked(getModels)
+			.mockReturnValueOnce(
+				new Promise((_, reject) => {
+					rejectA = reject;
+				})
+			)
+			.mockReturnValueOnce(new Promise(() => {})); // B 悬置于第二次模型请求
+
+		const a = sendMessage('A 的问题'); // 同步段执行完：generating=true，卡在 getModels
+		session.reset('other'); // 用户切换会话：runId bump、generating=false、errorMessage=''
+		session.touched = true;
+		const b = sendMessage('B 的问题'); // 新会话合法发送，generating=true 飞行中
+
+		rejectA(new Error('boom'));
+		await a;
+
+		expect(session.generating).toBe(true); // B 的守卫未被旧失败清掉
+		expect(session.errorMessage).toBe(''); // 未写入与 A 会话无关的错误横幅
+		expect(session.messages).toHaveLength(0);
+		void b;
+	});
+
 	it('模型列表获取失败时复位 generating，可再次发送', async () => {
 		vi.mocked(getModels).mockRejectedValue(new Error('boom'));
 
