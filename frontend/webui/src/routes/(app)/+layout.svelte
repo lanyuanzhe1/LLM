@@ -7,7 +7,7 @@
 
 	let { children } = $props();
 
-	let loaded = false;
+	let loaded = $state(false);
 
 	onMount(async () => {
 		const token = localStorage.getItem('token');
@@ -57,7 +57,7 @@
 				<div class="mb-2 truncate px-1 text-sm text-gray-600">{$user?.name ?? $user?.email ?? ''}</div>
 				<button
 					class="w-full rounded-lg border border-gray-300 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
-					on:click={signOut}
+					onclick={signOut}
 				>
 					退出登录
 				</button>
