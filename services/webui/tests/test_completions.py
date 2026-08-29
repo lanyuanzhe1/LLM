@@ -42,3 +42,23 @@ def test_completion_upstream_failure_persists_nothing(client, failing_upstream):
     listing = client.get("/api/v1/chats/", headers={"Authorization": f"Bearer {token}"}).json()
     # 失败轮整轮不落库，新建的空 chat 一并撤销
     assert listing == []
+
+
+def test_completion_multibyte_delta_split_across_chunks(client, split_chunk_upstream):
+    # 回归：aiter_bytes 不保证字符边界，旁路缓冲必须增量解码，
+    # 否则跨块的中文（'低' 被切成两块）落库成 U+FFFD 乱码
+    token = _signup(client)
+    res = client.post("/api/chat/completions", headers={"Authorization": f"Bearer {token}"}, json={
+        "model": "grain-storage-agent",
+        "messages": [{"role": "user", "content": "跨块字符测试"}],
+        "stream": True,
+    })
+    assert res.status_code == 200
+    frames = [f for f in res.text.split("\n\n") if f.startswith("data: ")]
+    chat_id = __import__("json").loads(frames[0][6:])["event"]["data"]["chat_id"]
+
+    detail = client.get(f"/api/v1/chats/{chat_id}", headers={"Authorization": f"Bearer {token}"})
+    history = detail.json()["chat"]["history"]
+    current = history["messages"][history["currentId"]]
+    assert "\ufffd" not in current["content"]  # 无替换字符残留
+    assert current["content"] == "低温储粮"  # 跨块字符完整无损

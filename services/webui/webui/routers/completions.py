@@ -24,6 +24,7 @@ POST /api/chat/completions (Bearer JWT):
 
 from __future__ import annotations
 
+import codecs
 import json
 import logging
 import time
@@ -60,6 +61,7 @@ class ChatCompletionForm(BaseModel):
     model: str
     messages: list[ChatCompletionMessage]
     chat_id: str | None = None
+    # Slice 1 仅支持流式：该形参仅作外形兼容被忽略，上游恒以 stream=True 转发
     stream: bool = True
 
 
@@ -223,6 +225,44 @@ async def chat_completions(
         failed = False
         terminal = False
 
+        def handle_frame(frame: str) -> None:
+            nonlocal failed, terminal
+            for line in frame.splitlines():
+                if not line.startswith('data: '):
+                    continue
+                payload = line[len('data: '):].strip()
+                if payload == '[DONE]':
+                    terminal = True
+                    continue
+                try:
+                    data = json.loads(payload)
+                except ValueError:
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                if isinstance(data.get('error'), dict):
+                    failed = True  # 流中 error 事件同样视为失败
+                elif data.get('object') == 'chat.completion.chunk':
+                    for choice in data.get('choices') or []:
+                        delta = (choice or {}).get('delta') or {}
+                        if delta.get('content'):
+                            assistant_parts.append(str(delta['content']))
+                elif (data.get('event') or {}).get('type') == 'source':
+                    sources.append(data['event'].get('data'))
+
+        async def rollback_new_chat() -> None:
+            # 整轮不落库；本次新建的 chat 一并撤销（§6.3.7）
+            if created_new:
+                deleted = await Chats.delete_chat_by_id_and_user_id(chat_id, user.id)
+                if not deleted:
+                    log.warning(
+                        'failed-turn cleanup left empty chat behind (chat_id=%s)', chat_id
+                    )
+
+        # 旁路缓冲必须用增量解码器：aiter_bytes 不保证字符边界，按块
+        # decode 会把跨块的多字节 UTF-8 字符腐蚀成 U+FFFD（落库文本），
+        # 透传给浏览器的字节流不受影响。
+        decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
         buffer = ''
         try:
             async for raw in upstream.stream_post(
@@ -236,40 +276,22 @@ async def chat_completions(
                 ),
             ):
                 yield raw  # 逐字节透传上游流
-                buffer += raw.decode('utf-8', errors='replace')
+                buffer += decoder.decode(raw)
                 while '\n\n' in buffer:
                     frame, buffer = buffer.split('\n\n', 1)
-                    for line in frame.splitlines():
-                        if not line.startswith('data: '):
-                            continue
-                        payload = line[len('data: '):].strip()
-                        if payload == '[DONE]':
-                            terminal = True
-                            continue
-                        try:
-                            data = json.loads(payload)
-                        except ValueError:
-                            continue
-                        if not isinstance(data, dict):
-                            continue
-                        if isinstance(data.get('error'), dict):
-                            failed = True  # 流中 error 事件同样视为失败
-                        elif data.get('object') == 'chat.completion.chunk':
-                            for choice in data.get('choices') or []:
-                                delta = (choice or {}).get('delta') or {}
-                                if delta.get('content'):
-                                    assistant_parts.append(str(delta['content']))
-                        elif (data.get('event') or {}).get('type') == 'source':
-                            sources.append(data['event'].get('data'))
+                    handle_frame(frame)
+            # 流末 flush：补齐可能悬在半空的尾部多字节字符
+            buffer += decoder.decode(b'', final=True)
+            while '\n\n' in buffer:
+                frame, buffer = buffer.split('\n\n', 1)
+                handle_frame(frame)
         except Exception:
             # 上游 HTTP 错误（stream_post raise_for_status）或连接中断
             log.exception('upstream chat completion failed (chat_id=%s)', chat_id)
             failed = True
 
         if failed:
-            # 整轮不落库；本次新建的 chat 一并撤销（§6.3.7）
-            if created_new:
-                await Chats.delete_chat_by_id_and_user_id(chat_id, user.id)
+            await rollback_new_chat()
             if not terminal:
                 # 上游未给出 [DONE]（HTTP 错误/中断）：补安全错误事件收尾
                 yield _sse({'error': {'message': SAFE_ERROR_MESSAGE, 'code': SAFE_ERROR_CODE}})
@@ -278,8 +300,7 @@ async def chat_completions(
 
         if not terminal:
             # 上游提前静默收尾：视同失败
-            if created_new:
-                await Chats.delete_chat_by_id_and_user_id(chat_id, user.id)
+            await rollback_new_chat()
             yield _sse({'error': {'message': SAFE_ERROR_MESSAGE, 'code': SAFE_ERROR_CODE}})
             yield b'data: [DONE]\n\n'
             return

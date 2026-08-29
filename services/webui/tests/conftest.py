@@ -104,6 +104,35 @@ def _failing_transport_handler(request: httpx.Request) -> httpx.Response:
     return _recorded_transport_handler(request)
 
 
+class _ByteChunks(httpx.AsyncByteStream):
+    """按给定字节块逐块 yield 的最小异步字节流。
+
+    httpx 0.28 MockTransport 对 iterable ``content=`` 在 ``client.stream()``
+    发送阶段抛异常，必须用 ``stream=`` + AsyncByteStream 才能控制分块边界。
+    """
+
+    def __init__(self, chunks: list[bytes]):
+        self._chunks = chunks
+
+    async def __aiter__(self):
+        for chunk in self._chunks:
+            yield chunk
+
+
+def _split_chunk_transport_handler(request: httpx.Request) -> httpx.Response:
+    """录制 SSE 按字节从含中文 delta 帧的多字节字符中间切成两个 chunk。"""
+    if request.url.path == "/v1/chat/completions":
+        payload = _RECORDED_SSE.encode("utf-8")
+        marker = "低温".encode("utf-8")  # '低' = E4 BD 8E（3 字节）
+        split_at = payload.index(marker) + 1  # 落在 '低' 的第 2 字节前
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            stream=_ByteChunks([payload[:split_at], payload[split_at:]]),
+        )
+    return _recorded_transport_handler(request)
+
+
 def _mock_client(handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="http://testserver"
@@ -127,4 +156,14 @@ def failing_upstream(monkeypatch):
 
     monkeypatch.setattr(
         upstream, "build_client", lambda: _mock_client(_failing_transport_handler)
+    )
+
+
+@pytest.fixture()
+def split_chunk_upstream(monkeypatch):
+    """跨块回归路径：含中文 delta 帧按字节从字符中间切开返回。"""
+    from webui.utils import upstream
+
+    monkeypatch.setattr(
+        upstream, "build_client", lambda: _mock_client(_split_chunk_transport_handler)
     )
