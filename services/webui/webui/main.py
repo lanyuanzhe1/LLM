@@ -59,7 +59,9 @@ def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=CORS_ALLOW_ORIGIN.split(';'),
+        # Empty CORS_ALLOW_ORIGIN (the default) -> [] -> no cross-origin
+        # access allowed; the service only serves same-origin traffic.
+        allow_origins=[o for o in CORS_ALLOW_ORIGIN.split(';') if o],
         allow_credentials=True,
         allow_methods=['*'],
         allow_headers=['*'],

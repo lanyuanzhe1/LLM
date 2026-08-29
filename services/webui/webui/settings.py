@@ -26,7 +26,10 @@ FRONTEND_BUILD_DIR = os.environ.get(
     "FRONTEND_BUILD_DIR",
     str(BASE_DIR.parent.parent / "frontend" / "webui" / "build"),
 )
-CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "*")
+# Both supported topologies (vite dev proxy, static SPA hosting) are
+# same-origin, so CORS is opt-in: an empty default yields an empty origin
+# list in main.py and no cross-origin access is allowed at all.
+CORS_ALLOW_ORIGIN = os.environ.get("CORS_ALLOW_ORIGIN", "")
 
 ENABLE_ADMIN_CHAT_ACCESS = (
     os.environ.get("ENABLE_ADMIN_CHAT_ACCESS", "false").strip().lower() == "true"

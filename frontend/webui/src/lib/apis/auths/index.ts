@@ -27,3 +27,12 @@ export async function getSessionUser(token: string) {
 	if (!res.ok) throw new Error('会话已过期');
 	return res.json();
 }
+
+export async function signout(token: string) {
+	const res = await fetch(`${BASE}/signout`, {
+		method: 'POST',
+		headers: { Authorization: `Bearer ${token}` }
+	});
+	if (!res.ok) throw new Error('登出失败');
+	return res.json();
+}

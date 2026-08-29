@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { getSessionUser } from '$lib/apis/auths';
 	import { user } from '$lib/stores';
+	import { signOut } from '$lib/utils/signout';
 	import { APP_NAME } from '$lib/constants';
 
 	let { children } = $props();
@@ -24,12 +25,6 @@
 			goto('/auth');
 		}
 	});
-
-	const signOut = () => {
-		localStorage.removeItem('token');
-		user.set(null);
-		goto('/auth');
-	};
 
 	const navItems = [
 		{ href: '/', label: '对话' },

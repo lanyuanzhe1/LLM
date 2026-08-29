@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getSessionUser, signin, signup } from './auths';
+import { getSessionUser, signin, signout, signup } from './auths';
 
 const mockFetch = (ok: boolean, body: unknown) => {
 	return vi.fn().mockResolvedValue({
@@ -68,5 +68,22 @@ describe('auths api', () => {
 	it('getSessionUser 401 时抛出会话过期', async () => {
 		vi.stubGlobal('fetch', mockFetch(false, {}));
 		await expect(getSessionUser('bad')).rejects.toThrow('会话已过期');
+	});
+
+	it('signout 以 POST 携带 Bearer token 调后端', async () => {
+		vi.stubGlobal('fetch', mockFetch(true, { status: true }));
+
+		const res = await signout('tok-abc');
+		expect(res.status).toBe(true);
+
+		const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+		expect(url).toBe('/api/v1/auths/signout');
+		expect(init.method).toBe('POST');
+		expect(init.headers.Authorization).toBe('Bearer tok-abc');
+	});
+
+	it('signout 后端失败时抛出登出失败', async () => {
+		vi.stubGlobal('fetch', mockFetch(false, {}));
+		await expect(signout('tok-abc')).rejects.toThrow('登出失败');
 	});
 });
