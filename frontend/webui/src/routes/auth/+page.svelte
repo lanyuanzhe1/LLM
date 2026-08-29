@@ -67,7 +67,10 @@
 		</p>
 
 		<form
-			on:submit|preventDefault={submitHandler}
+			onsubmit={(event) => {
+				event.preventDefault();
+				void submitHandler();
+			}}
 			class="flex flex-col gap-4"
 		>
 			{#if mode === 'signup'}
@@ -138,12 +141,12 @@
 		<div class="mt-4 text-center text-sm text-gray-500">
 			{#if mode === 'signin'}
 				还没有账户？
-				<button class="font-medium text-gray-900 underline" on:click={() => (mode = 'signup')}>
+				<button class="font-medium text-gray-900 underline" onclick={() => (mode = 'signup')}>
 					立即注册
 				</button>
 			{:else}
 				已有账户？
-				<button class="font-medium text-gray-900 underline" on:click={() => (mode = 'signin')}>
+				<button class="font-medium text-gray-900 underline" onclick={() => (mode = 'signin')}>
 					去登录
 				</button>
 			{/if}
