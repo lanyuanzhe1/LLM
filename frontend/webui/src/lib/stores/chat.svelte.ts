@@ -174,14 +174,19 @@ export const sendMessage = async (rawContent: string): Promise<void> => {
 
 	session.errorMessage = '';
 	session.statusText = '';
+	// 先占位再 await：关闭 ensureModelId 网络窗口内的双重发送
+	session.generating = true;
+	const startRun = session.runId;
 
 	let model: string;
 	try {
 		model = await ensureModelId(token);
 	} catch {
 		session.errorMessage = '模型列表获取失败，请稍后重试';
+		session.generating = false;
 		return;
 	}
+	if (session.runId !== startRun) return; // await 期间已切换会话，放弃本次发送
 
 	const myRun = ++session.runId;
 	const userMessage: ChatMessage = { id: generateUuid(), role: 'user', content, sources: [] };
@@ -194,7 +199,6 @@ export const sendMessage = async (rawContent: string): Promise<void> => {
 	session.messages = [...session.messages, userMessage, assistantMessage];
 	// 必须经由 $state 代理句柄追加流式内容：直接改写原始对象不会触发视图更新
 	const assistant = session.messages[session.messages.length - 1];
-	session.generating = true;
 	session.touched = true;
 	session.statusText = '正在思考…';
 

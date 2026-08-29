@@ -46,6 +46,9 @@
 	{/if}
 
 	<div class="pb-4">
-		<MessageInput disabled={session.generating} onsend={(content) => void sendMessage(content)} />
+		<MessageInput
+			disabled={session.generating || session.loadingHistory}
+			onsend={(content) => void sendMessage(content)}
+		/>
 	</div>
 </div>
