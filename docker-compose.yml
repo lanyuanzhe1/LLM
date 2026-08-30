@@ -1,0 +1,70 @@
+# 粮储智研助手：三子容器一键起跑（app / webui / frontend）
+#
+# 启动：docker compose up -d --build
+#   - 浏览器打开 http://127.0.0.1:5173 （前端，vite dev，/api 反代到 webui）
+#   - webui API 直连 http://127.0.0.1:8080
+#   - app API 直连 http://127.0.0.1:8000
+#
+# 注意：
+#   - app 出网直连 iFlytek（ChatDoc/MaaS）；若需走宿主代理（如本机 127.0.0.1:7897），
+#     给 app/webui 加 environment: HTTP_PROXY/HTTPS_PROXY=http://host.docker.internal:7897。
+#     MaaS WebSocket（websockets 库）不认代理环境变量，经代理访问会失败——此为硬限制。
+#   - env_file 在宿主机读取，与构建上下文无关；environment 优先于 env_file。
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
+    env_file: .env
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/ready')"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  webui:
+    build:
+      context: .
+      dockerfile: docker/webui.Dockerfile
+    env_file: services/webui/.env
+    environment:
+      # 覆盖 .env 里的 http://127.0.0.1:8000，指向 compose 内网 app 容器
+      APP_UPSTREAM_BASE_URL: http://app:8000
+    depends_on:
+      app:
+        condition: service_healthy
+    volumes:
+      - webui_data:/app/data # SQLite 持久化（DATA_DIR 默认 /app/data）
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; urllib.request.urlopen('http://localhost:8080/api/version')"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    environment:
+      # vite dev 的 /api 反代目标 → webui 容器
+      WEBUI_PROXY_TARGET: http://webui:8080
+    depends_on:
+      webui:
+        condition: service_healthy
+    ports:
+      - "5173:5173"
+
+volumes:
+  webui_data:

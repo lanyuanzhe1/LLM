@@ -1,0 +1,21 @@
+# Docker 构建上下文瘦身 + 去敏感
+# 注意：compose 的 env_file 在宿主机读取，排除 .env 不影响密钥注入。
+.git
+.gitignore
+**/node_modules
+**/__pycache__
+**/*.pyc
+*.pyo
+.env
+services/webui/.env
+knowledge/
+vector_store/
+ocr_cache/
+build/
+.svelte-kit/
+docs/
+history/
+scripts/
+example/
+.worktrees/
+*.png
