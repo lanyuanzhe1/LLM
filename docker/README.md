@@ -3,6 +3,9 @@
 把整套系统（app 领域服务 / webui 应用服务 / frontend SPA）容器化，
 `docker compose up` 即可，无需本机装 Python/Node 环境。
 
+compose 项目名 `grain-agent`（`docker-compose.yml` 顶层 `name:`），
+容器/镜像即 `grain-agent-app` / `grain-agent-webui` / `grain-agent-frontend`。
+
 ## 启动
 
 ```bash

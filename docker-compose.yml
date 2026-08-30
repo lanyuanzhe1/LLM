@@ -10,6 +10,8 @@
 #     给 app/webui 加 environment: HTTP_PROXY/HTTPS_PROXY=http://host.docker.internal:7897。
 #     MaaS WebSocket（websockets 库）不认代理环境变量，经代理访问会失败——此为硬限制。
 #   - env_file 在宿主机读取，与构建上下文无关；environment 优先于 env_file。
+name: grain-agent
+
 services:
   app:
     build:
