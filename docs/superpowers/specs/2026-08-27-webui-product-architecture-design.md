@@ -47,6 +47,7 @@
 | D13 | 智能体首版：`GET /v1/agents` 从受控 JSON 配置读取，读取时校验 `launch_url` 必须是 `https:` scheme（非法条目剔除），卡片 `window.open(launch_url, "_blank", "noopener,noreferrer")`；无真实 URL 时展示诚实空态，不放假卡片 | handoff §7（含"受信任 HTTPS"建议）；禁止 Mock |
 | D14 | 前端新骨架 + 选择性移植组件，不整体拷 `src/`；i18n 用 stub；Slice 1 输入框新写极简 textarea，不移植 MessageInput（2730 行/约 90 import） | 参考前端有 65 个 locales、pyodide/onnx 联网构建钩子、MessageInput 拖带 tiptap/语音/文件上传等重依赖；整体拷贝无法构建也无法裁剪 |
 | D15 | 会话与消息的唯一持久化路径是 slim `/api/chat/completions` 服务端落库；第一阶段前端不调用 `POST /api/v1/chats/new` 或 `POST /api/v1/chats/{id}` 写消息内容 | 消除"客户端整份 chat JSON 覆盖"与"服务端 upsert"双写冲突（last-writer-wins 丢数据） |
+| D16 | 问答编排默认用进程内本地编排器（从 `develop-openwebUI` 移植 `local_workflow.py`，`workflow_provider` 默认 `"local"`），星辰云端工作流降为可选 provider（`"xingchen"`，需 FLOW_ID） | 用户 2026-07-30 已否决星辰云端工作流、2026-08-30 确认本地编排继续可用；去除 FLOW_ID 启动依赖与云端故障面 |
 
 ## 4. 总体架构
 
@@ -69,7 +70,7 @@ app/                   粮储领域服务（FastAPI，:8000，绑 127.0.0.1）
   └─ 现有 /v1/chat、/tools/v1/*、/health、/ready 保持不变
         │
         ▼
-讯飞 ChatDoc（知识库文件/分块/检索）与星辰工作流（问答编排）
+讯飞 ChatDoc（知识库文件/分块/检索）；问答编排在 app 进程内完成（本地编排器，D16）；星辰云端工作流为可选 provider
 ```
 
 正式代码边界：
@@ -275,4 +276,4 @@ POST /api/chat/completions  (Bearer JWT)
 
 - **ChatDoc 66001（额度/余额不可用）**：远端知识库未入库、`XF_CHATDOC_REPO_ID` 未配置，`app` 当前无法完整启动。不阻塞代码与离线测试；阻塞真实 E2E 与知识库页面真实数据联调。禁止伪造 manifest 或切换 repo 配置。
 - **未决项（不自行扩展）**：教师/学生模型、个人/项目知识库、智能体具体列表与 URL、品牌规范、部署拓扑/SSO。
-- **星辰工作流行为**：多轮历史打包进 `AGENT_USER_INPUT` 的效果需额度恢复后实测校准；若工作流对输入格式敏感，置 `OPENAI_COMPAT_HISTORY_ENABLED=false` 回退为仅传最后一条 user 消息。
+- **本地编排器行为**（D16）：多轮历史打包进 `AGENT_USER_INPUT` 的效果需真实链路实测校准；若生成质量受影响，置 `OPENAI_COMPAT_HISTORY_ENABLED=false` 回退为仅传最后一条 user 消息。
