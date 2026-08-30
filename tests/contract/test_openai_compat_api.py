@@ -7,6 +7,12 @@ from app.core.request_context import RequestContextStore
 from app.dependencies import ServiceContainer
 from app.rag.evidence import Evidence
 from app.schemas.events import WorkflowFrame
+from app.schemas.tools import (
+    CitationValidateResponse,
+    GenerateResponse,
+    RetrieveResponse,
+    RetrievalQuality,
+)
 
 
 EVIDENCE = Evidence(
@@ -489,3 +495,102 @@ def test_openwebui_stream_failure_finishes_status_and_returns_sse_error():
     assert payloads[-2]["error"]["code"] == "WORKFLOW_UNAVAILABLE"
     assert payloads[-1] == "[DONE]"
     assert "provider-secret-must-not-leak" not in response.text
+
+
+class LocalStubRetriever:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def retrieve(self, request):
+        self.calls.append(request)
+        return RetrieveResponse(
+            request_id=request.request_id,
+            query=request.query,
+            evidences=[EVIDENCE],
+            quality=RetrievalQuality(top_score=0.88, sufficient=True),
+        )
+
+
+class LocalStubGeneration:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def generate(self, request):
+        self.calls.append(request)
+        return GenerateResponse(
+            request_id=request.request_id,
+            answer=RecordingWorkflow.answer,
+            cited_evidence_ids=[EVIDENCE.evidence_id],
+        )
+
+
+class LocalStubCitations:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def validate(self, request):
+        self.calls.append(request)
+        return CitationValidateResponse(
+            request_id=request.request_id,
+            valid=True,
+            errors=[],
+            unsupported_sentences=[],
+            citation_ids=[EVIDENCE.evidence_id],
+        )
+
+
+class LocalStubCases:
+    def evaluate(self, request):
+        raise AssertionError("知识问答路径不应调用案例评估")
+
+
+def _local_provider_client():
+    from app.main import create_app
+    from app.services.local_workflow import LocalWorkflow
+
+    contexts = RequestContextStore(ttl_seconds=300)
+    generation = LocalStubGeneration()
+    workflow = LocalWorkflow(
+        retriever=LocalStubRetriever(),
+        generation=generation,
+        cases=LocalStubCases(),
+        citations=LocalStubCitations(),
+        contexts=contexts,
+    )
+    container = ServiceContainer(
+        retriever=None,
+        generation=None,
+        cases=None,
+        citations=None,
+        contexts=contexts,
+        workflow=workflow,
+    )
+    return (
+        TestClient(
+            create_app(
+                settings=_settings(workflow_provider="local"),
+                container=container,
+            )
+        ),
+        generation,
+    )
+
+
+def test_local_provider_non_stream_matches_xingchen_stub_path():
+    client, generation = _local_provider_client()
+
+    response = client.post(
+        "/v1/chat/completions",
+        headers=_auth(),
+        json=_request(),
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.json()["choices"][0]["message"]["content"]
+        == RecordingWorkflow.answer
+    )
+    assert response.json()["sources"][0]["metadata"][0]["page"] == 3
+    assert generation.calls[0].task_type == "knowledge_qa"
+    assert generation.calls[0].role.value == "student"
+    assert generation.calls[0].evidences == [EVIDENCE]

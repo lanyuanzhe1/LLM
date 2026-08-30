@@ -1,10 +1,11 @@
 from functools import lru_cache
 from math import isfinite
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 from unicodedata import category
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,6 @@ IDENTIFIER_FIELDS = (
     "xf_app_id",
     "xf_maas_resource_id",
     "xf_maas_service_id",
-    "xf_workflow_flow_id",
 )
 SECRET_FIELDS = (
     "xf_embedding_api_secret",
@@ -133,6 +133,14 @@ def cloud_configuration_issues(settings: object) -> tuple[str, ...]:
     for field in IDENTIFIER_FIELDS:
         if _non_blank_string(_setting_value(settings, field)) is None:
             issues.append(field.upper())
+    if (
+        _setting_value(settings, "workflow_provider") == "xingchen"
+        and _non_blank_string(
+            _setting_value(settings, "xf_workflow_flow_id")
+        )
+        is None
+    ):
+        issues.append("XF_WORKFLOW_FLOW_ID")
     for field in SECRET_FIELDS:
         validator = (
             _valid_tools_token
@@ -183,7 +191,8 @@ class Settings(BaseSettings):
     xf_maas_service_id: str
     xf_workflow_api_key: SecretStr
     xf_workflow_api_secret: SecretStr
-    xf_workflow_flow_id: str
+    xf_workflow_flow_id: str = ""
+    workflow_provider: Literal["local", "xingchen"] = "local"
     tools_service_token: SecretStr
     xf_chatdoc_repo_id: str | None = None
     openai_compat_api_key: SecretStr
@@ -221,6 +230,23 @@ class Settings(BaseSettings):
         if normalized is None:
             raise ValueError("must not be blank")
         return normalized
+
+    @field_validator("xf_workflow_flow_id")
+    @classmethod
+    def normalize_optional_flow_id(cls, value: str) -> str:
+        return _non_blank_string(value) or ""
+
+    @model_validator(mode="after")
+    def require_flow_id_for_xingchen_provider(self) -> "Settings":
+        if (
+            self.workflow_provider == "xingchen"
+            and not self.xf_workflow_flow_id
+        ):
+            raise ValueError(
+                "xf_workflow_flow_id must not be blank when "
+                "workflow_provider is xingchen"
+            )
+        return self
 
     @field_validator("xf_chatdoc_repo_id")
     @classmethod

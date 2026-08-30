@@ -25,6 +25,7 @@ from app.domain.cases.rules import CaseEvaluator
 from app.rag.chatdoc_retriever import ChatDocRetriever, load_chatdoc_manifest
 from app.services.citation_validation import CitationValidator
 from app.services.generation import GenerationService
+from app.services.local_workflow import LocalWorkflow
 from app.tools.routes import router as tools_router
 
 
@@ -90,24 +91,40 @@ def build_container(
     )
     _register_startup_closeable(maas)
     owned_closeables.append(maas)
-    workflow = XingchenWorkflowClient(
-        api_key=workflow_key,
-        api_secret=workflow_secret,
-        flow_id=settings.xf_workflow_flow_id,
-        url=settings.workflow_url,
-        timeout_seconds=settings.workflow_timeout_seconds,
-        max_frames=settings.workflow_max_frames,
-        max_payload_bytes=settings.workflow_max_payload_bytes,
-        max_answer_chars=settings.workflow_max_answer_chars,
-    )
-    _register_startup_closeable(workflow)
-    owned_closeables.append(workflow)
+    generation = GenerationService(maas)
+    cases = CaseEvaluator()
+    citations = CitationValidator()
+    contexts = RequestContextStore(settings.request_context_ttl_seconds)
+    workflow_provider = getattr(settings, "workflow_provider", "local")
+    if workflow_provider == "local":
+        # 进程内编排器：与 XingchenWorkflowClient 同一 stream 帧流接口，
+        # 无网络资源，不注册 close()
+        workflow: Any = LocalWorkflow(
+            retriever=retriever,
+            generation=generation,
+            cases=cases,
+            citations=citations,
+            contexts=contexts,
+        )
+    else:
+        workflow = XingchenWorkflowClient(
+            api_key=workflow_key,
+            api_secret=workflow_secret,
+            flow_id=settings.xf_workflow_flow_id,
+            url=settings.workflow_url,
+            timeout_seconds=settings.workflow_timeout_seconds,
+            max_frames=settings.workflow_max_frames,
+            max_payload_bytes=settings.workflow_max_payload_bytes,
+            max_answer_chars=settings.workflow_max_answer_chars,
+        )
+        _register_startup_closeable(workflow)
+        owned_closeables.append(workflow)
     container = ServiceContainer(
         retriever=retriever,
-        generation=GenerationService(maas),
-        cases=CaseEvaluator(),
-        citations=CitationValidator(),
-        contexts=RequestContextStore(settings.request_context_ttl_seconds),
+        generation=generation,
+        cases=cases,
+        citations=citations,
+        contexts=contexts,
         workflow=workflow,
     )
     return container, tuple(owned_closeables)
