@@ -87,6 +87,27 @@ def create_app() -> FastAPI:
             media_type=response.headers.get('content-type', 'application/json'),
         )
 
+    @app.get('/api/v1/knowledge/files')
+    async def knowledge_files(user=Depends(get_verified_user)):
+        response = await upstream.get_json('/v1/knowledge/files')
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            media_type=response.headers.get('content-type', 'application/json'),
+        )
+
+    @app.get('/api/v1/knowledge/files/{file_id}/chunks')
+    async def knowledge_file_chunks(
+        file_id: str,
+        user=Depends(get_verified_user),
+    ):
+        response = await upstream.get_json(f'/v1/knowledge/files/{file_id}/chunks')
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            media_type=response.headers.get('content-type', 'application/json'),
+        )
+
     # SPA static hosting; skipped when the build dir is absent (dev: vite serves).
     frontend_build_dir = Path(FRONTEND_BUILD_DIR)
     if frontend_build_dir.is_dir():

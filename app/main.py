@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import cases, chat, health, openai_compat, sources
+from app.api import cases, chat, health, knowledge, openai_compat, sources
 from app.clients.iflytek_chatdoc import IflytekChatDocClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
@@ -25,6 +25,7 @@ from app.domain.cases.rules import CaseEvaluator
 from app.rag.chatdoc_retriever import ChatDocRetriever, load_chatdoc_manifest
 from app.services.citation_validation import CitationValidator
 from app.services.generation import GenerationService
+from app.services.knowledge_catalog import KnowledgeCatalog
 from app.services.local_workflow import LocalWorkflow
 from app.tools.routes import router as tools_router
 
@@ -76,6 +77,7 @@ def build_container(
         manifest=manifest,
         min_score=settings.retrieval_min_score,
     )
+    knowledge = KnowledgeCatalog(client=chatdoc, manifest=manifest)
 
     maas = IflytekMaaSClient(
         app_id=settings.xf_app_id,
@@ -126,6 +128,7 @@ def build_container(
         citations=citations,
         contexts=contexts,
         workflow=workflow,
+        knowledge=knowledge,
     )
     return container, tuple(owned_closeables)
 
@@ -234,6 +237,7 @@ def create_app(
     application.include_router(chat.router)
     application.include_router(cases.router)
     application.include_router(sources.router)
+    application.include_router(knowledge.router)
     application.include_router(tools_router)
     return application
 

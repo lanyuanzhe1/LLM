@@ -85,16 +85,23 @@ def _require_authorized(request: Request) -> JSONResponse | None:
 
 
 async def auth_middleware(request: Request, call_next):
+    path = request.url.path
     protected_route = (
         request.method == "GET"
-        and request.url.path == "/v1/models"
+        and path == "/v1/models"
     ) or (
         request.method == "POST"
-        and request.url.path == "/v1/chat/completions"
-    )
+        and path == "/v1/chat/completions"
+    ) or path.startswith("/v1/knowledge/")
     if protected_route:
         unauthorized = _require_authorized(request)
         if unauthorized is not None:
+            if path.startswith("/v1/knowledge/"):
+                # 安全外形：不泄露上游细节，也不必 OpenAI 错误形
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": {"message": "未授权", "code": "UNAUTHORIZED"}},
+                )
             return unauthorized
     return await call_next(request)
 

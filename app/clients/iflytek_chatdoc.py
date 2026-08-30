@@ -31,6 +31,12 @@ class ChatDocSearchHit:
     retrieval_type: str
 
 
+@dataclass(frozen=True)
+class ChatDocChunk:
+    index: int
+    content: str
+
+
 class IflytekChatDocClient:
     def __init__(
         self,
@@ -228,6 +234,72 @@ class IflytekChatDocClient:
             "/openapi/v1/repo/file/add",
             json_body={"repoId": repo_id, "fileIds": file_ids},
         )
+
+    async def repo_file_list(self, repo_id: str) -> list[dict[str, Any]]:
+        """List files in a repo, returning the raw ChatDoc rows.
+
+        The live endpoint returns ``data: {rows, total}``; the simplified
+        docs show a plain array. Both shapes are accepted.
+        """
+        data = await self._request_json(
+            "/openapi/v1/repo/file/list",
+            json_body={"repoId": repo_id, "currentPage": 1, "pageSize": 500},
+        )
+        if isinstance(data, dict):
+            rows = data.get("rows")
+            if not isinstance(rows, list):
+                raise ProviderUnavailable(
+                    "CHATDOC_PROTOCOL_ERROR",
+                    "讯飞知识库响应格式无效",
+                )
+            data = rows
+        if not isinstance(data, list):
+            raise ProviderUnavailable(
+                "CHATDOC_PROTOCOL_ERROR",
+                "讯飞知识库响应格式无效",
+            )
+        for item in data:
+            if not isinstance(item, dict):
+                raise ProviderUnavailable(
+                    "CHATDOC_PROTOCOL_ERROR",
+                    "讯飞知识库响应格式无效",
+                )
+        return data
+
+    async def file_chunks(self, file_id: str) -> list[ChatDocChunk]:
+        data = await self._request_json(
+            "/openapi/v1/file/chunks",
+            data={"fileId": file_id},
+        )
+        if not isinstance(data, list):
+            raise ProviderUnavailable(
+                "CHATDOC_PROTOCOL_ERROR",
+                "讯飞知识库响应格式无效",
+            )
+        chunks: list[ChatDocChunk] = []
+        for item in data:
+            if not isinstance(item, dict):
+                raise ProviderUnavailable(
+                    "CHATDOC_PROTOCOL_ERROR",
+                    "讯飞知识库响应格式无效",
+                )
+            try:
+                index = int(item["dataIndex"])
+                content = item["content"]
+            except (KeyError, TypeError, ValueError, OverflowError):
+                raise ProviderUnavailable(
+                    "CHATDOC_PROTOCOL_ERROR",
+                    "讯飞知识库响应格式无效",
+                ) from None
+            if not isinstance(content, str) or not content.strip():
+                raise ProviderUnavailable(
+                    "CHATDOC_PROTOCOL_ERROR",
+                    "讯飞知识库响应格式无效",
+                )
+            chunks.append(
+                ChatDocChunk(index=index, content=content.strip())
+            )
+        return chunks
 
     async def search(
         self,
