@@ -24,7 +24,6 @@ POST /api/chat/completions (Bearer JWT):
 
 from __future__ import annotations
 
-import codecs
 import json
 import logging
 import time
@@ -225,30 +224,23 @@ async def chat_completions(
         failed = False
         terminal = False
 
-        def handle_frame(frame: str) -> None:
-            nonlocal failed, terminal
-            for line in frame.splitlines():
-                if not line.startswith('data: '):
-                    continue
-                payload = line[len('data: '):].strip()
-                if payload == '[DONE]':
-                    terminal = True
-                    continue
-                try:
-                    data = json.loads(payload)
-                except ValueError:
-                    continue
-                if not isinstance(data, dict):
-                    continue
-                if isinstance(data.get('error'), dict):
-                    failed = True  # 流中 error 事件同样视为失败
-                elif data.get('object') == 'chat.completion.chunk':
-                    for choice in data.get('choices') or []:
-                        delta = (choice or {}).get('delta') or {}
-                        if delta.get('content'):
-                            assistant_parts.append(str(delta['content']))
-                elif (data.get('event') or {}).get('type') == 'source':
-                    sources.append(data['event'].get('data'))
+        def handle_payload(payload: str) -> None:
+            nonlocal failed
+            try:
+                data = json.loads(payload)
+            except ValueError:
+                return
+            if not isinstance(data, dict):
+                return
+            if isinstance(data.get('error'), dict):
+                failed = True  # 流中 error 事件同样视为失败
+            elif data.get('object') == 'chat.completion.chunk':
+                for choice in data.get('choices') or []:
+                    delta = (choice or {}).get('delta') or {}
+                    if delta.get('content'):
+                        assistant_parts.append(str(delta['content']))
+            elif (data.get('event') or {}).get('type') == 'source':
+                sources.append(data['event'].get('data'))
 
         async def rollback_new_chat() -> None:
             # 整轮不落库；本次新建的 chat 一并撤销（§6.3.7）
@@ -259,11 +251,12 @@ async def chat_completions(
                         'failed-turn cleanup left empty chat behind (chat_id=%s)', chat_id
                     )
 
-        # 旁路缓冲必须用增量解码器：aiter_bytes 不保证字符边界，按块
-        # decode 会把跨块的多字节 UTF-8 字符腐蚀成 U+FFFD（落库文本），
-        # 透传给浏览器的字节流不受影响。
-        decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
-        buffer = ''
+        # 逐帧透传：落库必须先于 yield "[DONE]" 完成。客户端读到 [DONE]
+        # 即断开，若落库排在 yield 之后会被 uvicorn 的连接取消（CancelledError）
+        # 打断——这正是真实链路 currentId 恒为 null 的根因。
+        # 按 b"\n\n" 分帧是安全的：\n(0x0A) 不会出现在 UTF-8 多字节字符中间，
+        # 帧内 decode 不会跨帧断字符。
+        byte_buffer = b''
         try:
             async for raw in upstream.stream_post(
                 '/v1/chat/completions',
@@ -275,16 +268,33 @@ async def chat_completions(
                     }
                 ),
             ):
-                yield raw  # 逐字节透传上游流
-                buffer += decoder.decode(raw)
-                while '\n\n' in buffer:
-                    frame, buffer = buffer.split('\n\n', 1)
-                    handle_frame(frame)
-            # 流末 flush：补齐可能悬在半空的尾部多字节字符
-            buffer += decoder.decode(b'', final=True)
-            while '\n\n' in buffer:
-                frame, buffer = buffer.split('\n\n', 1)
-                handle_frame(frame)
+                byte_buffer += raw
+                while b'\n\n' in byte_buffer:
+                    frame_bytes, byte_buffer = byte_buffer.split(b'\n\n', 1)
+                    frame = frame_bytes.decode('utf-8', errors='replace')
+                    done = False
+                    for line in frame.splitlines():
+                        if not line.startswith('data: '):
+                            continue
+                        payload = line[len('data: '):].strip()
+                        if payload == '[DONE]':
+                            done = True
+                            terminal = True
+                        else:
+                            handle_payload(payload)
+                    if done:
+                        # 落库先于 yield [DONE]：即使客户端读到 [DONE] 立即
+                        # 断开，本轮消息也已持久化。
+                        if not failed:
+                            await _persist_turn(
+                                chat,
+                                user_content=user_text,
+                                assistant_content=''.join(assistant_parts),
+                                sources=sources,
+                            )
+                        yield frame_bytes + b'\n\n'
+                        return
+                    yield frame_bytes + b'\n\n'
         except Exception:
             # 上游 HTTP 错误（stream_post raise_for_status）或连接中断
             log.exception('upstream chat completion failed (chat_id=%s)', chat_id)
@@ -298,18 +308,9 @@ async def chat_completions(
                 yield b'data: [DONE]\n\n'
             return
 
-        if not terminal:
-            # 上游提前静默收尾：视同失败
-            await rollback_new_chat()
-            yield _sse({'error': {'message': SAFE_ERROR_MESSAGE, 'code': SAFE_ERROR_CODE}})
-            yield b'data: [DONE]\n\n'
-            return
-
-        await _persist_turn(
-            chat,
-            user_content=user_text,
-            assistant_content=''.join(assistant_parts),
-            sources=sources,
-        )
+        # 上游提前静默收尾（无 [DONE]）：视同失败
+        await rollback_new_chat()
+        yield _sse({'error': {'message': SAFE_ERROR_MESSAGE, 'code': SAFE_ERROR_CODE}})
+        yield b'data: [DONE]\n\n'
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')
