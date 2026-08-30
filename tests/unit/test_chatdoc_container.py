@@ -25,6 +25,7 @@ def _settings(manifest_path: Path) -> Settings:
         tools_service_token="tool-token",
         xf_chatdoc_repo_id="repo-123",
         chatdoc_manifest_path=manifest_path,
+        openai_compat_api_key="test-compat-key",
     )
 
 

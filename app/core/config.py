@@ -21,6 +21,7 @@ SECRET_FIELDS = (
     "xf_workflow_api_key",
     "xf_workflow_api_secret",
     "tools_service_token",
+    "openai_compat_api_key",
 )
 DURATION_FIELDS = (
     "chatdoc_timeout_seconds",
@@ -135,7 +136,7 @@ def cloud_configuration_issues(settings: object) -> tuple[str, ...]:
     for field in SECRET_FIELDS:
         validator = (
             _valid_tools_token
-            if field == "tools_service_token"
+            if field in {"tools_service_token", "openai_compat_api_key"}
             else _non_blank_secret
         )
         if validator(_setting_value(settings, field)) is None:
@@ -185,6 +186,13 @@ class Settings(BaseSettings):
     xf_workflow_flow_id: str
     tools_service_token: SecretStr
     xf_chatdoc_repo_id: str | None = None
+    openai_compat_api_key: SecretStr
+    openai_compat_model_id: str = "grain-storage-agent"
+    openai_compat_model_name: str = "粮储知识助手"
+    openai_compat_project_id: str | None = None
+    openai_compat_history_enabled: bool = True
+    openai_compat_history_max_turns: int = Field(default=6, gt=0, le=50)
+    openai_compat_history_max_chars: int = Field(default=4000, gt=0)
 
     chatdoc_manifest_path: Path = Path("artifacts/chatdoc/base.json")
     retrieval_min_score: float = Field(default=0.35, ge=-1.0, le=1.0)
@@ -232,12 +240,30 @@ class Settings(BaseSettings):
             raise ValueError("must not be blank")
         return normalized
 
-    @field_validator("tools_service_token")
+    @field_validator("tools_service_token", "openai_compat_api_key")
     @classmethod
     def validate_tools_service_token(cls, value: SecretStr) -> SecretStr:
         normalized = _valid_tools_token(value)
         if normalized is None:
             raise ValueError("must be a visible ASCII bearer token")
+        return normalized
+
+    @field_validator("openai_compat_model_id", "openai_compat_model_name")
+    @classmethod
+    def validate_openai_compat_display(cls, value: str) -> str:
+        normalized = _non_blank_string(value)
+        if normalized is None or len(normalized) > 128:
+            raise ValueError("must contain 1-128 characters")
+        return normalized
+
+    @field_validator("openai_compat_project_id")
+    @classmethod
+    def validate_openai_compat_project_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = _non_blank_string(value)
+        if normalized is None:
+            raise ValueError("must not be blank")
         return normalized
 
     @field_validator("chatdoc_url")
