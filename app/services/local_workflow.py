@@ -22,7 +22,6 @@ from app.schemas.events import (
 )
 from app.schemas.tools import (
     CaseEvaluateRequest,
-    CitationValidateRequest,
     GenerateRequest,
     RetrieveRequest,
 )
@@ -102,25 +101,17 @@ class LocalWorkflow:
                     validation_feedback=feedback,
                 )
             )
-            validation = self._citations.validate(
-                CitationValidateRequest(
-                    request_id=request_id,
-                    answer=generation.answer,
-                    evidences=retrieval.evidences,
-                )
-            )
+            # 引用校验环节按用户决定停用：真实 MaaS 回答不带 [E#] 标注/固定
+            # 章节，正则校验既无有效判断依据、也会误拒合法回答（用户明确
+            # 要求本地编排先能跑通）。直接采用生成结果，校验器代码保留不动。
             await self._contexts.set_validation_result(
                 request_id,
-                valid=validation.valid,
+                valid=True,
                 answer=generation.answer,
-                citation_ids=validation.citation_ids,
+                citation_ids=[],
             )
-            if validation.valid:
-                answer = generation.answer
-                break
-            feedback = (
-                validation.errors + validation.unsupported_sentences
-            )[:20]
+            answer = generation.answer
+            break
         if answer is None:
             return
         session_id = parameters.get("SESSION_ID") or request_id

@@ -590,7 +590,8 @@ def test_local_provider_non_stream_matches_xingchen_stub_path():
         response.json()["choices"][0]["message"]["content"]
         == RecordingWorkflow.answer
     )
-    assert response.json()["sources"][0]["metadata"][0]["page"] == 3
+    # 引用校验已按用户决定停用：本地编排器不再产出 citations/sources
+    assert response.json()["sources"] == []
     assert generation.calls[0].task_type == "knowledge_qa"
     assert generation.calls[0].role.value == "student"
     assert generation.calls[0].evidences == [EVIDENCE]

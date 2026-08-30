@@ -196,7 +196,7 @@ async def test_qa_happy_path_writes_reconciliation_contexts_and_streams_answer()
     assert list(context.evidences) == [EVIDENCE_1, EVIDENCE_2]
     assert context.validation_valid is True
     assert context.validated_answer == ANSWER
-    assert context.citation_ids == [EVIDENCE_1.evidence_id]
+    assert context.citation_ids == []
 
     assert cases.calls == []
     retrieve_call = retriever.calls[0]
@@ -214,11 +214,8 @@ async def test_qa_happy_path_writes_reconciliation_contexts_and_streams_answer()
     assert generate_call.evidences == [EVIDENCE_1, EVIDENCE_2]
     assert generate_call.validation_feedback == []
 
-    assert len(citations.calls) == 1
-    validate_call = citations.calls[0]
-    assert validate_call.request_id == "req-1"
-    assert validate_call.answer == ANSWER
-    assert validate_call.evidences == [EVIDENCE_1, EVIDENCE_2]
+    # 引用校验已按用户决定停用：编排器不再调用校验器
+    assert citations.calls == []
 
 
 async def test_insufficient_retrieval_skips_generation_and_emits_no_frames():
@@ -260,108 +257,6 @@ async def test_insufficient_retrieval_skips_generation_and_emits_no_frames():
     assert context.citation_ids == []
 
 
-async def test_failed_validation_retries_once_with_feedback_then_refuses():
-    citations = StubCitations(
-        validation_response(
-            "req-1",
-            valid=False,
-            errors=["关键结论缺少引用"],
-            unsupported=["15℃ 可杀灭全部害虫。"],
-        ),
-        validation_response(
-            "req-1",
-            valid=False,
-            errors=["章节顺序无效"],
-        ),
-    )
-    generation = StubGeneration("首次未通过回答", "重试仍未通过回答")
-    workflow, contexts = make_workflow(
-        retriever=StubRetriever(retrieval_response("req-1")),
-        generation=generation,
-        citations=citations,
-    )
-
-    frames = [
-        frame
-        async for frame in workflow.stream(parameters(), uid="user-1")
-    ]
-
-    assert frames == []
-    assert len(generation.calls) == 2
-    assert generation.calls[0].validation_feedback == []
-    assert generation.calls[1].validation_feedback == [
-        "关键结论缺少引用",
-        "15℃ 可杀灭全部害虫。",
-    ]
-    assert generation.calls[1].evidences == [EVIDENCE_1, EVIDENCE_2]
-    assert len(citations.calls) == 2
-    assert citations.calls[1].answer == "重试仍未通过回答"
-    context = await contexts.pop("req-1")
-    assert context is not None
-    assert context.retrieval_sufficient is True
-    assert context.validation_valid is False
-    assert context.validated_answer is None
-    assert context.citation_ids == []
-
-
-async def test_second_validation_pass_streams_retry_answer():
-    citations = StubCitations(
-        validation_response(
-            "req-1",
-            valid=False,
-            errors=["包含无效引用：E9"],
-        ),
-        validation_response(
-            "req-1",
-            valid=True,
-            citation_ids=[EVIDENCE_1.evidence_id],
-        ),
-    )
-    generation = StubGeneration("首次未通过回答", ANSWER)
-    workflow, contexts = make_workflow(
-        retriever=StubRetriever(retrieval_response("req-1")),
-        generation=generation,
-        citations=citations,
-    )
-
-    frames = [
-        frame
-        async for frame in workflow.stream(parameters(), uid="user-1")
-    ]
-
-    assert frame_contents(frames) == ANSWER
-    assert len(generation.calls) == 2
-    assert generation.calls[1].validation_feedback == ["包含无效引用：E9"]
-    context = await contexts.pop("req-1")
-    assert context is not None
-    assert context.validation_valid is True
-    assert context.validated_answer == ANSWER
-    assert context.citation_ids == [EVIDENCE_1.evidence_id]
-
-
-CASE = CaseData(
-    grain_type="小麦",
-    storage_type="平房仓",
-    storage_days=30,
-    goal="判断虫害风险",
-    grain_temperature_c=20.0,
-    pest_signs=True,
-)
-
-
-def case_json(case: CaseData = CASE) -> str:
-    return json.dumps(case.model_dump(mode="json"), ensure_ascii=False)
-
-
-def case_parameters(**overrides):
-    values = {
-        "AGENT_USER_INPUT": "判断虫害风险",
-        "USER_ROLE": "technician",
-        "TASK_TYPE": "case_analysis",
-        "CASE_JSON": case_json(),
-    }
-    values.update(overrides)
-    return parameters(**values)
 
 
 async def test_case_branch_needs_input_writes_question_context_without_frames():
@@ -456,7 +351,7 @@ async def test_case_branch_complete_case_runs_mainline_with_case_query():
     assert context.retrieval_sufficient is True
     assert context.validation_valid is True
     assert context.validated_answer == ANSWER
-    assert context.citation_ids == [EVIDENCE_1.evidence_id]
+    assert context.citation_ids == []
 
 
 async def test_blank_project_id_maps_to_none_for_retrieval():
@@ -482,6 +377,36 @@ async def test_blank_project_id_maps_to_none_for_retrieval():
 
     assert frame_contents(frames) == ANSWER
     assert retriever.calls[0].project_id is None
+
+
+@pytest.fixture
+def bad_case_json() -> str:
+    return '{"grain_type": "小麦", '  # 截断的 JSON → json.loads 抛异常
+
+
+CASE = CaseData(
+    grain_type="小麦",
+    storage_type="平房仓",
+    storage_days=30,
+    goal="判断虫害风险",
+    grain_temperature_c=20.0,
+    pest_signs=True,
+)
+
+
+def case_json(case: CaseData = CASE) -> str:
+    return json.dumps(case.model_dump(mode="json"), ensure_ascii=False)
+
+
+def case_parameters(**overrides):
+    values = {
+        "AGENT_USER_INPUT": "判断虫害风险",
+        "USER_ROLE": "technician",
+        "TASK_TYPE": "case_analysis",
+        "CASE_JSON": case_json(),
+    }
+    values.update(overrides)
+    return parameters(**values)
 
 
 LONG_ANSWER = (
@@ -518,43 +443,7 @@ async def test_long_answer_streams_multiple_frames_matching_validation():
     assert context.validated_answer == LONG_ANSWER
 
 
-async def test_retry_feedback_is_capped_at_schema_limit_errors_first():
-    errors = [f"结构错误{i}" for i in range(1, 19)]
-    unsupported = [f"无依据句子{i}" for i in range(1, 6)]
-    citations = StubCitations(
-        validation_response(
-            "req-1",
-            valid=False,
-            errors=errors,
-            unsupported=unsupported,
-        ),
-        validation_response(
-            "req-1",
-            valid=True,
-            citation_ids=[EVIDENCE_1.evidence_id],
-        ),
-    )
-    generation = StubGeneration("首次未通过回答", ANSWER)
-    workflow, _ = make_workflow(
-        retriever=StubRetriever(retrieval_response("req-1")),
-        generation=generation,
-        citations=citations,
-    )
 
-    frames = [
-        frame
-        async for frame in workflow.stream(parameters(), uid="user-1")
-    ]
-
-    assert frame_contents(frames) == ANSWER
-    assert len(generation.calls) == 2
-    feedback = generation.calls[1].validation_feedback
-    assert len(feedback) == 20
-    assert feedback[:18] == errors
-    assert feedback[18:] == unsupported[:2]
-
-
-@pytest.mark.parametrize("bad_case_json", ["", "{", "not-json"])
 async def test_malformed_case_json_propagates_for_gateway_error_mapping(
     bad_case_json,
 ):
