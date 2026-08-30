@@ -6,7 +6,7 @@ import json
 from contextlib import asynccontextmanager
 from typing import Any
 
-from sqlalchemy import MetaData, types
+from sqlalchemy import MetaData, event, types
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -45,6 +45,18 @@ async_engine = create_async_engine(
         {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
     ),
 )
+if "sqlite" in DATABASE_URL:
+    # SQLite 并发写需要 WAL + busy_timeout；缺了它们，uvicorn 连接池下
+    # 多连接并发写会抛 "database is locked"（见真实链路落库失败根因）。
+    # 与参考 open_webui/internal/db.py 的 _apply_sqlite_pragmas 语义一致。
+    @event.listens_for(async_engine.sync_engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
+
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
     class_=AsyncSession,
