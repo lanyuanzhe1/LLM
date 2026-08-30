@@ -1,8 +1,8 @@
 # `webui` 分支 Slice 1 SDD 执行交接
 
-> 日期：2026-08-29（第二次更新：Task 10+12 fix round 已闭环，Phase B 全绿，Task 14 已实现待审）
-> 下一会话焦点：Task 14 审查 → Task 15 聊天页 → Task 16 占位路由与联调 → 全分支终审 → 收尾合并。
-> 执行方式：superpowers:subagent-driven-development（控制器 + 每任务实现者/审查者），已有进度全部记录在 ledger。
+> 日期：2026-08-29（最终更新：**Slice 1 全部完成并合并回 webui**）
+> 状态：16/16 任务完成 + 全分支终审关闭（2 Important 已修复复审通过）。本文档由"执行中交接"转为**完成记录 + Slice 2/3 启动参考**。
+> 执行方式：superpowers:subagent-driven-development（控制器 + 每任务实现者/审查者），逐任务记录在 ledger（该目录已在收尾时按 SDD 流程清理，git 历史为最终记录）。
 
 ## 1. 仓库与执行状态
 
@@ -23,19 +23,19 @@
 | Task 8 | fd34523 | utils/auth + misc.parse_duration（删 api-key/加密 token/redis 吊销） |
 | Task 9 | 6ac096c | auths 路由 + 最小 create_app（三处显式偏离：开放注册不关闭、无群组装配、permissions={}/头像=""） |
 | Task 11 | 9ac30b5 | main 补全（/api/version、/api/config、/api/models 代理、SPA 托管）+ upstream.py |
-| Task 10+12 | bf5e25d, a5d64df, 166642a | chats 路由（404 属主语义）+ slim /api/chat/completions（chat_id 首帧、字节透传、消息图落库、失败整轮回滚）+ fix round 1（增量 UTF-8 解码修复，re-review 全 ADDRESSED）。16 passed |
-| Task 13 | — | Phase B 全量验证（控制器直接执行）：services/webui 16 passed；app 离线 661 passed, 4 deselected |
-| Task 14 | 2cc487d | frontend/webui 骨架：SvelteKit 2 SPA + Tailwind 4、/auth 双模式页、(app) 守卫 layout + 侧边栏、占位路由、auths API 6 单测；npm build 通过。**审查尚未派发——下一会话第一件事**（BASE=166642a，报告在 task-14-report.md） |
+| Task 14 | 2cc487d, ad6267f | frontend/webui 骨架：SvelteKit 2 SPA + Tailwind 4、/auth 双模式页、(app) 守卫 layout + 侧边栏、auths API 单测；fix round 1（$state 守卫 + .gitignore 例外 + check 门槛） |
+| Task 15 | 65d58e2, 2b902bb, 0259f41 | 聊天页：SSE 六类事件解析、流式渲染、引用卡片、历史回溯恢复、模块级会话单例；fix rounds（双重发送守卫 + 失败路径 runId 守卫） |
+| Task 16 | f553692 | knowledge/agents/settings 占位路由 + 三套全量验证 + 双服务冒烟 |
+| 终审修复波 | e3dc34f | 登出清后端 cookie（signout 闭环）+ CORS 默认收紧为空 |
 
-## 3. 当前位置：Phase C 进行中
+**最终测试证据**：app 661 passed, 4 deselected；services/webui 16 passed；frontend vitest 27/27 + svelte-check 0/0 + adapter-static build 成功；双服务冒烟（/api/version 200、无凭据 401）。
 
-fix round 已闭环（上版交接的 §3 中断点已解决，含 mock 改 `_ByteChunks` AsyncByteStream 子类的实际修法）。剩余：
+## 3. Slice 1 之后的待办（Slice 2/3 启动输入）
 
-- **Task 14 审查**（紧迫）：生成审查包（`scripts/review-package PLAN_FILE 166642a 2cc487d`）派发任务审查员。注意实现者自报疑虑：Svelte 5 下用了旧式 `on:click` 语法、登录成功固定回 `/`。
-- **Task 15**：聊天页（发送→流式渲染→历史恢复）。计划中 `src/lib/utils/sse.ts` 有完整代码；后端 chat_id 首帧契约、source/status/error 扩展事件已在 services/webui 落地（16 passed 钉住）。
-- **Task 16**：knowledge/agents/settings 占位路由 + 离线联调验证 + 全量测试与构建。
-- **终审**：`scripts/review-package PLAN_FILE 31765ec HEAD` 生成全分支包，用最强模型按 requesting-code-review/code-reviewer.md 终审；ledger 中的 deferred minors 交给它分诊（含：preflight 时序用例 flake 风险、task_type 忽略契约用例、owned_by 命名残留、JWT 无吊销、cookie-only 正向用例、登录无限流等）。
-- **收尾**：superpowers:finishing-a-development-branch；推送分支并请用户合并回 `webui`；汇总所有 Ruling 给用户。
+- **Slice 2**（知识库展示）：ChatDoc 客户端加 `repo_file_list`/`file_chunks`，`GET /v1/knowledge/*`（spec §5.2 契约），services/webui 加代理路由，前端两页面。注意：app 启动需要 `.env` 配齐 `OPENAI_COMPAT_API_KEY` 与 `XF_WORKFLOW_FLOW_ID`（见下）。
+- **Slice 3**（智能体广场）：`GET /v1/agents`（config/agents.json，https 校验）+ 代理 + 广场页。需要用户提供真实智能体分享链接，否则保持诚实空态。
+- **Slice 4**：品牌/管理员用户管理/响应式收尾 + 真实 E2E（ChatDoc 已入库 30 文件，repo d8689a0，见记忆）。
+- 终审分诊为"延期"的事项（JWT 吊销、登录限流、cookie-only 用例、task_type 忽略契约用例等）在对应切片或部署前处理；完整清单见终审报告（会话记录）与各 task report。
 
 ## 5. 关键裁决（Ruling）速查（详见 ledger）
 
