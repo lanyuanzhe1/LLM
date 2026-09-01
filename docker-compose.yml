@@ -1,9 +1,10 @@
-# 粮储智研助手：三子容器一键起跑（app / webui / frontend）
+# 粮储智研助手：四容器一键起跑（app / webui / frontend / frontend-plaza）
 #
 # 启动：docker compose up -d --build
 #   - 浏览器打开 http://127.0.0.1:5173 （前端，vite dev，/api 反代到 webui）
 #   - webui API 直连 http://127.0.0.1:8080
 #   - app API 直连 http://127.0.0.1:8000
+#   - 智能体广场由同源路径 http://127.0.0.1:5173/agents 访问
 #
 # 注意：
 #   - app 出网直连 iFlytek（ChatDoc/MaaS）；若需走宿主代理（如本机 127.0.0.1:7897），
@@ -62,11 +63,47 @@ services:
     environment:
       # vite dev 的 /api 反代目标 → webui 容器
       WEBUI_PROXY_TARGET: http://webui:8080
+      # /agents 反代目标 → Next.js 广场容器
+      PLAZA_PROXY_TARGET: http://frontend-plaza:3000
     depends_on:
       webui:
         condition: service_healthy
+      frontend-plaza:
+        condition: service_healthy
     ports:
       - "5173:5173"
+
+  frontend-plaza:
+    build:
+      context: .
+      dockerfile: docker/frontend-plaza.Dockerfile
+      args:
+        BASEPATH: /agents
+        NEXT_PUBLIC_BASE_PATH: /agents
+    environment:
+      BASEPATH: /agents
+      NEXT_PUBLIC_BASE_PATH: /agents
+      WEBUI_BASE_URL: http://webui:8080
+      GRAIN_API_BASE_URL: http://app:8000
+      VECTOR_STORE_REPORT: /vector-store-base/download_report.json
+    depends_on:
+      app:
+        condition: service_healthy
+      webui:
+        condition: service_healthy
+    volumes:
+      - ./vector_store/base/download_report.json:/vector-store-base/download_report.json:ro
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - -O
+        - /dev/null
+        - http://127.0.0.1:3000/agents/login
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   webui_data:

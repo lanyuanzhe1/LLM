@@ -5,6 +5,7 @@
 	import { user } from '$lib/stores';
 	import { signOut } from '$lib/utils/signout';
 	import { APP_NAME } from '$lib/constants';
+	import { navItems } from '$lib/navigation';
 
 	let { children } = $props();
 
@@ -26,12 +27,6 @@
 		}
 	});
 
-	const navItems = [
-		{ href: '/', label: '对话' },
-		{ href: '/knowledge', label: '知识库' },
-		{ href: '/agents', label: '智能体广场' },
-		{ href: '/settings', label: '设置' }
-	];
 </script>
 
 {#if loaded}
@@ -40,12 +35,22 @@
 			<div class="px-4 py-4 text-base font-bold text-gray-900">{APP_NAME}</div>
 			<nav class="flex-1 px-2">
 				{#each navItems as item}
-					<a
-						href={item.href}
-						class="mb-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
-					>
-						{item.label}
-					</a>
+					{#if item.fullReload}
+						<a
+							href={item.href}
+							data-sveltekit-reload
+							class="mb-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
+						>
+							{item.label}
+						</a>
+					{:else}
+						<a
+							href={item.href}
+							class="mb-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
+						>
+							{item.label}
+						</a>
+					{/if}
 				{/each}
 			</nav>
 			<div class="border-t border-gray-200 p-3">

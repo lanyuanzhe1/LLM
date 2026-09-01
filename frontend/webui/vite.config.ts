@@ -9,9 +9,13 @@ const proxyTarget =
 	(globalThis as { process?: { env?: Record<string, string> } }).process?.env
 		?.WEBUI_PROXY_TARGET ?? 'http://127.0.0.1:8080';
 
+const plazaProxyTarget =
+	(globalThis as { process?: { env?: Record<string, string> } }).process?.env
+		?.PLAZA_PROXY_TARGET ?? 'http://127.0.0.1:3000';
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
-	server: { proxy: { '/api': proxyTarget } },
+	server: { proxy: { '/api': proxyTarget, '/agents': plazaProxyTarget } },
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}'],
 		environment: 'node'
