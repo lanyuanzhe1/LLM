@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import cases, chat, health, sources
+from app.api import assistant, cases, chat, health, knowledge, openai_compat, sources
 from app.clients.iflytek_chatdoc import IflytekChatDocClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
@@ -25,6 +25,8 @@ from app.domain.cases.rules import CaseEvaluator
 from app.rag.chatdoc_retriever import ChatDocRetriever, load_chatdoc_manifest
 from app.services.citation_validation import CitationValidator
 from app.services.generation import GenerationService
+from app.services.knowledge_catalog import KnowledgeCatalog
+from app.services.local_workflow import LocalWorkflow
 from app.tools.routes import router as tools_router
 
 
@@ -75,6 +77,7 @@ def build_container(
         manifest=manifest,
         min_score=settings.retrieval_min_score,
     )
+    knowledge = KnowledgeCatalog(client=chatdoc, manifest=manifest)
 
     maas = IflytekMaaSClient(
         app_id=settings.xf_app_id,
@@ -90,25 +93,42 @@ def build_container(
     )
     _register_startup_closeable(maas)
     owned_closeables.append(maas)
-    workflow = XingchenWorkflowClient(
-        api_key=workflow_key,
-        api_secret=workflow_secret,
-        flow_id=settings.xf_workflow_flow_id,
-        url=settings.workflow_url,
-        timeout_seconds=settings.workflow_timeout_seconds,
-        max_frames=settings.workflow_max_frames,
-        max_payload_bytes=settings.workflow_max_payload_bytes,
-        max_answer_chars=settings.workflow_max_answer_chars,
-    )
-    _register_startup_closeable(workflow)
-    owned_closeables.append(workflow)
+    generation = GenerationService(maas)
+    cases = CaseEvaluator()
+    citations = CitationValidator()
+    contexts = RequestContextStore(settings.request_context_ttl_seconds)
+    workflow_provider = getattr(settings, "workflow_provider", "local")
+    if workflow_provider == "local":
+        # 进程内编排器：与 XingchenWorkflowClient 同一 stream 帧流接口，
+        # 无网络资源，不注册 close()
+        workflow: Any = LocalWorkflow(
+            retriever=retriever,
+            generation=generation,
+            cases=cases,
+            citations=citations,
+            contexts=contexts,
+        )
+    else:
+        workflow = XingchenWorkflowClient(
+            api_key=workflow_key,
+            api_secret=workflow_secret,
+            flow_id=settings.xf_workflow_flow_id,
+            url=settings.workflow_url,
+            timeout_seconds=settings.workflow_timeout_seconds,
+            max_frames=settings.workflow_max_frames,
+            max_payload_bytes=settings.workflow_max_payload_bytes,
+            max_answer_chars=settings.workflow_max_answer_chars,
+        )
+        _register_startup_closeable(workflow)
+        owned_closeables.append(workflow)
     container = ServiceContainer(
         retriever=retriever,
-        generation=GenerationService(maas),
-        cases=CaseEvaluator(),
-        citations=CitationValidator(),
-        contexts=RequestContextStore(settings.request_context_ttl_seconds),
+        generation=generation,
+        cases=cases,
+        citations=citations,
+        contexts=contexts,
         workflow=workflow,
+        knowledge=knowledge,
     )
     return container, tuple(owned_closeables)
 
@@ -175,12 +195,20 @@ def create_app(
     if container is not None:
         application.state.container = container
     application.add_middleware(RequestIdMiddleware)
+    application.middleware("http")(openai_compat.auth_middleware)
 
     @application.exception_handler(RequestValidationError)
     async def request_validation_error_handler(
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
+        if request.url.path == "/v1/chat/completions":
+            return openai_compat.openai_error_response(
+                status_code=422,
+                message="聊天请求无效",
+                error_type="invalid_request_error",
+                code="invalid_request_error",
+            )
         detail = [
             {
                 "loc": [
@@ -205,9 +233,12 @@ def create_app(
         )
 
     application.include_router(health.router)
+    application.include_router(openai_compat.router)
     application.include_router(chat.router)
+    application.include_router(assistant.router)
     application.include_router(cases.router)
     application.include_router(sources.router)
+    application.include_router(knowledge.router)
     application.include_router(tools_router)
     return application
 

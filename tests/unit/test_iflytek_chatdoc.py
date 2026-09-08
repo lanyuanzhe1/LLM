@@ -155,3 +155,193 @@ async def test_business_error_is_redacted_as_provider_unavailable():
     assert exc_info.value.code == "CHATDOC_UNAVAILABLE_10013"
     assert "secret upstream detail" not in str(exc_info.value)
     await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_repo_file_list_hits_endpoint_and_unwraps_rows():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["payload"] = json.loads(request.content)
+        return _response(
+            {
+                "code": 0,
+                "data": {
+                    "total": 1,
+                    "rows": [
+                        {
+                            "fileId": "file-1",
+                            "fileName": "低温储粮.pdf",
+                            "fileStatus": "vectored",
+                            "quantity": 24,
+                        }
+                    ],
+                },
+            }
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    rows = await client.repo_file_list(repo_id="repo-1")
+
+    assert captured["path"] == "/openapi/v1/repo/file/list"
+    assert captured["payload"] == {
+        "repoId": "repo-1",
+        "currentPage": 1,
+        "pageSize": 500,
+    }
+    assert rows == [
+        {
+            "fileId": "file-1",
+            "fileName": "低温储粮.pdf",
+            "fileStatus": "vectored",
+            "quantity": 24,
+        }
+    ]
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_repo_file_list_accepts_plain_array_response():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _response(
+            {
+                "code": 0,
+                "data": [
+                    {"fileId": "file-1", "fileName": "低温储粮.pdf", "fileStatus": "vectored"}
+                ],
+            }
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    rows = await client.repo_file_list(repo_id="repo-1")
+
+    assert rows == [{"fileId": "file-1", "fileName": "低温储粮.pdf", "fileStatus": "vectored"}]
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_repo_file_list_rejects_malformed_response():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _response({"code": 0, "data": {"rows": "not-a-list"}})
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    with pytest.raises(ProviderUnavailable) as exc_info:
+        await client.repo_file_list(repo_id="repo-1")
+
+    assert exc_info.value.code == "CHATDOC_PROTOCOL_ERROR"
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_file_chunks_hits_endpoint_with_form_data_and_returns_typed_chunks():
+    captured = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        captured["path"] = request.url.path
+        captured["form"] = request.content.decode()
+        return _response(
+            {
+                "code": 0,
+                "data": [
+                    {"dataType": "wiki", "dataIndex": 1, "content": "低温抑制呼吸。"},
+                    {"dataType": "wiki", "dataIndex": 0, "content": "仓储管理基础。"},
+                ],
+            }
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    chunks = await client.file_chunks(file_id="file-1")
+
+    assert captured["path"] == "/openapi/v1/file/chunks"
+    assert "fileId=file-1" in captured["form"]
+    assert [(c.index, c.content) for c in chunks] == [
+        (1, "低温抑制呼吸。"),
+        (0, "仓储管理基础。"),
+    ]
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_file_chunks_strips_surrounding_whitespace():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _response(
+            {
+                "code": 0,
+                "data": [
+                    {"dataType": "wiki", "dataIndex": 0, "content": "  低温抑制呼吸。\r\n"}
+                ],
+            }
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    chunks = await client.file_chunks(file_id="file-1")
+
+    assert chunks[0].content == "低温抑制呼吸。"
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_file_chunks_rejects_item_without_content():
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return _response(
+            {
+                "code": 0,
+                "data": [{"dataType": "wiki", "dataIndex": 0, "content": ""}],
+            }
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = IflytekChatDocClient(
+        app_id="app-id",
+        api_secret="secret",
+        base_url="https://chatdoc.example",
+        timeout_seconds=10,
+        http=http,
+    )
+
+    with pytest.raises(ProviderUnavailable) as exc_info:
+        await client.file_chunks(file_id="file-1")
+
+    assert exc_info.value.code == "CHATDOC_PROTOCOL_ERROR"
+    await http.aclose()

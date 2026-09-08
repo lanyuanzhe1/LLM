@@ -221,6 +221,7 @@ def settings(**overrides):
         "xf_workflow_api_secret": SecretStr("workflow-secret"),
         "xf_workflow_flow_id": "flow-id",
         "tools_service_token": SecretStr("tool-token"),
+        "openai_compat_api_key": SecretStr("test-compat-key"),
         "xf_chatdoc_repo_id": "repo-123",
         "chatdoc_manifest_path": Path("missing-chatdoc-manifest.json"),
         "retrieval_min_score": 0.35,
@@ -769,6 +770,8 @@ def test_validated_environment_limits_reach_owned_provider_clients(
         "XF_WORKFLOW_API_SECRET": "workflow-secret",
         "XF_WORKFLOW_FLOW_ID": "flow-id",
         "TOOLS_SERVICE_TOKEN": "tool-token",
+        "OPENAI_COMPAT_API_KEY": "test-compat-key",
+        "WORKFLOW_PROVIDER": "xingchen",
         "XF_CHATDOC_REPO_ID": "repo-123",
         "CHATDOC_MANIFEST_PATH": str(tmp_path / "chatdoc.json"),
         "MAAS_MAX_FRAMES": "11",
@@ -1000,7 +1003,12 @@ def test_startup_failure_closes_resources_created_before_failure(
 
     with pytest.raises(RuntimeError, match="workflow construction failed"):
         with TestClient(
-            create_app(settings=settings(chatdoc_manifest_path=manifest))
+            create_app(
+                settings=settings(
+                    chatdoc_manifest_path=manifest,
+                    workflow_provider="xingchen",
+                )
+            )
         ):
             pass
 

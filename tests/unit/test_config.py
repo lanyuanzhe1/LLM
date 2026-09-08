@@ -17,6 +17,7 @@ REQUIRED_ENV = {
     "XF_WORKFLOW_API_SECRET": "workflow-secret",
     "XF_WORKFLOW_FLOW_ID": "flow-id",
     "TOOLS_SERVICE_TOKEN": "tool-token",
+    "OPENAI_COMPAT_API_KEY": "test-compat-key",
 }
 
 
@@ -32,6 +33,7 @@ def configured_settings(**overrides) -> Settings:
         "xf_workflow_api_secret": "workflow-secret",
         "xf_workflow_flow_id": "flow-id",
         "tools_service_token": "tool-token",
+        "openai_compat_api_key": "test-compat-key",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -50,6 +52,7 @@ def test_settings_load_required_values(monkeypatch, tmp_path: Path):
     assert settings.chatdoc_manifest_path == tmp_path / "chatdoc.json"
     assert settings.chatdoc_url == "https://chatdoc.xfyun.cn/"
     assert settings.retrieval_min_score == 0.35
+    assert settings.workflow_provider == "local"
     assert settings.workflow_url.endswith("/workflow/v1/chat/completions")
     assert settings.maas_max_frames == 1024
     assert settings.maas_max_payload_bytes == 2_097_152
@@ -85,7 +88,6 @@ def test_settings_reject_non_bearer_compatible_tool_tokens(token):
         "xf_app_id",
         "xf_maas_resource_id",
         "xf_maas_service_id",
-        "xf_workflow_flow_id",
     ],
 )
 def test_settings_reject_blank_required_identifiers(field):
@@ -211,3 +213,86 @@ def test_settings_accepts_environment_style_integer_budget_strings():
     assert settings.maas_max_frames == 7
     assert settings.workflow_max_payload_bytes == 4096
     assert settings.gateway_max_buffer_chars == 99
+
+
+def test_openai_compat_defaults_and_validators():
+    from app.core.config import Settings
+
+    settings = Settings(
+        xf_app_id="app",
+        xf_embedding_api_secret="emb",
+        xf_maas_api_key="k",
+        xf_maas_api_secret="s",
+        xf_maas_resource_id="r",
+        xf_maas_service_id="svc",
+        xf_workflow_api_key="wk",
+        xf_workflow_api_secret="ws",
+        xf_workflow_flow_id="flow",
+        tools_service_token="t" * 16,
+        xf_chatdoc_repo_id="repo",
+        openai_compat_api_key="compat-key-1",
+    )
+    assert settings.openai_compat_model_id == "grain-storage-agent"
+    assert settings.openai_compat_history_enabled is True
+    assert settings.openai_compat_history_max_turns == 6
+    assert settings.openai_compat_history_max_chars == 4000
+
+
+def test_local_provider_tolerates_blank_flow_id_without_runtime_issues():
+    from app.core.config import cloud_configuration_issues
+
+    settings = configured_settings(xf_workflow_flow_id="")
+
+    assert settings.workflow_provider == "local"
+    assert settings.xf_workflow_flow_id == ""
+    assert cloud_configuration_issues(settings) == ()
+
+
+def test_xingchen_provider_still_requires_non_blank_flow_id():
+    settings = configured_settings(workflow_provider="xingchen")
+
+    assert settings.workflow_provider == "xingchen"
+    assert settings.xf_workflow_flow_id == "flow-id"
+
+    with pytest.raises(ValidationError) as exc_info:
+        configured_settings(
+            workflow_provider="xingchen",
+            xf_workflow_flow_id="",
+        )
+
+    assert "flow-id" not in str(exc_info.value)
+
+
+def test_xingchen_runtime_configuration_flags_blank_flow_id():
+    from types import SimpleNamespace
+
+    from app.core.config import cloud_configuration_issues
+
+    values = vars(configured_settings())
+    values["workflow_provider"] = "xingchen"
+    values["xf_workflow_flow_id"] = ""
+
+    issues = cloud_configuration_issues(SimpleNamespace(**values))
+
+    assert "XF_WORKFLOW_FLOW_ID" in issues
+
+
+def test_openai_compat_api_key_rejects_invisible_chars():
+    import pytest
+    from app.core.config import Settings
+
+    with pytest.raises(ValueError):
+        Settings(
+            xf_app_id="app",
+            xf_embedding_api_secret="emb",
+            xf_maas_api_key="k",
+            xf_maas_api_secret="s",
+            xf_maas_resource_id="r",
+            xf_maas_service_id="svc",
+            xf_workflow_api_key="wk",
+            xf_workflow_api_secret="ws",
+            xf_workflow_flow_id="flow",
+            tools_service_token="t" * 16,
+            xf_chatdoc_repo_id="repo",
+            openai_compat_api_key="bad key with spaces\t",
+        )

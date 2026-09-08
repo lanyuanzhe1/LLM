@@ -1,10 +1,11 @@
 from functools import lru_cache
 from math import isfinite
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 from unicodedata import category
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,6 @@ IDENTIFIER_FIELDS = (
     "xf_app_id",
     "xf_maas_resource_id",
     "xf_maas_service_id",
-    "xf_workflow_flow_id",
 )
 SECRET_FIELDS = (
     "xf_embedding_api_secret",
@@ -21,6 +21,7 @@ SECRET_FIELDS = (
     "xf_workflow_api_key",
     "xf_workflow_api_secret",
     "tools_service_token",
+    "openai_compat_api_key",
 )
 DURATION_FIELDS = (
     "chatdoc_timeout_seconds",
@@ -132,10 +133,18 @@ def cloud_configuration_issues(settings: object) -> tuple[str, ...]:
     for field in IDENTIFIER_FIELDS:
         if _non_blank_string(_setting_value(settings, field)) is None:
             issues.append(field.upper())
+    if (
+        _setting_value(settings, "workflow_provider") == "xingchen"
+        and _non_blank_string(
+            _setting_value(settings, "xf_workflow_flow_id")
+        )
+        is None
+    ):
+        issues.append("XF_WORKFLOW_FLOW_ID")
     for field in SECRET_FIELDS:
         validator = (
             _valid_tools_token
-            if field == "tools_service_token"
+            if field in {"tools_service_token", "openai_compat_api_key"}
             else _non_blank_secret
         )
         if validator(_setting_value(settings, field)) is None:
@@ -182,9 +191,24 @@ class Settings(BaseSettings):
     xf_maas_service_id: str
     xf_workflow_api_key: SecretStr
     xf_workflow_api_secret: SecretStr
-    xf_workflow_flow_id: str
+    xf_workflow_flow_id: str = ""
+    workflow_provider: Literal["local", "xingchen"] = "local"
     tools_service_token: SecretStr
     xf_chatdoc_repo_id: str | None = None
+    # 星火助手（智能体广场）API：可选，未配置时 /v1/assistant/chat 返回 503
+    xf_assistant_app_id: str | None = None
+    xf_assistant_api_key: SecretStr | None = None
+    xf_assistant_api_secret: SecretStr | None = None
+    assistant_api_url: str = (
+        "wss://spark-openapi.cn-huabei-1.xf-yun.com/v1/assistants"
+    )
+    openai_compat_api_key: SecretStr
+    openai_compat_model_id: str = "grain-storage-agent"
+    openai_compat_model_name: str = "粮储知识助手"
+    openai_compat_project_id: str | None = None
+    openai_compat_history_enabled: bool = True
+    openai_compat_history_max_turns: int = Field(default=6, gt=0, le=50)
+    openai_compat_history_max_chars: int = Field(default=4000, gt=0)
 
     chatdoc_manifest_path: Path = Path("artifacts/chatdoc/base.json")
     retrieval_min_score: float = Field(default=0.35, ge=-1.0, le=1.0)
@@ -214,6 +238,23 @@ class Settings(BaseSettings):
             raise ValueError("must not be blank")
         return normalized
 
+    @field_validator("xf_workflow_flow_id")
+    @classmethod
+    def normalize_optional_flow_id(cls, value: str) -> str:
+        return _non_blank_string(value) or ""
+
+    @model_validator(mode="after")
+    def require_flow_id_for_xingchen_provider(self) -> "Settings":
+        if (
+            self.workflow_provider == "xingchen"
+            and not self.xf_workflow_flow_id
+        ):
+            raise ValueError(
+                "xf_workflow_flow_id must not be blank when "
+                "workflow_provider is xingchen"
+            )
+        return self
+
     @field_validator("xf_chatdoc_repo_id")
     @classmethod
     def validate_optional_chatdoc_repo_id(cls, value: str | None) -> str | None:
@@ -232,12 +273,30 @@ class Settings(BaseSettings):
             raise ValueError("must not be blank")
         return normalized
 
-    @field_validator("tools_service_token")
+    @field_validator("tools_service_token", "openai_compat_api_key")
     @classmethod
     def validate_tools_service_token(cls, value: SecretStr) -> SecretStr:
         normalized = _valid_tools_token(value)
         if normalized is None:
             raise ValueError("must be a visible ASCII bearer token")
+        return normalized
+
+    @field_validator("openai_compat_model_id", "openai_compat_model_name")
+    @classmethod
+    def validate_openai_compat_display(cls, value: str) -> str:
+        normalized = _non_blank_string(value)
+        if normalized is None or len(normalized) > 128:
+            raise ValueError("must contain 1-128 characters")
+        return normalized
+
+    @field_validator("openai_compat_project_id")
+    @classmethod
+    def validate_openai_compat_project_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = _non_blank_string(value)
+        if normalized is None:
+            raise ValueError("must not be blank")
         return normalized
 
     @field_validator("chatdoc_url")

@@ -1,0 +1,72 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { getSessionUser } from '$lib/apis/auths';
+	import { user } from '$lib/stores';
+	import { signOut } from '$lib/utils/signout';
+	import { APP_NAME } from '$lib/constants';
+	import { navItems } from '$lib/navigation';
+
+	let { children } = $props();
+
+	let loaded = $state(false);
+
+	onMount(async () => {
+		const token = localStorage.getItem('token');
+		if (!token) {
+			goto('/auth');
+			return;
+		}
+		try {
+			const sessionUser = await getSessionUser(token);
+			user.set(sessionUser);
+			loaded = true;
+		} catch {
+			localStorage.removeItem('token');
+			goto('/auth');
+		}
+	});
+
+</script>
+
+{#if loaded}
+	<div class="flex h-screen">
+		<aside class="flex w-56 shrink-0 flex-col border-r border-gray-200 bg-gray-50">
+			<div class="px-4 py-4 text-base font-bold text-gray-900">{APP_NAME}</div>
+			<nav class="flex-1 px-2">
+				{#each navItems as item}
+					{#if item.fullReload}
+						<a
+							href={item.href}
+							data-sveltekit-reload
+							class="mb-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
+						>
+							{item.label}
+						</a>
+					{:else}
+						<a
+							href={item.href}
+							class="mb-1 block rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-200"
+						>
+							{item.label}
+						</a>
+					{/if}
+				{/each}
+			</nav>
+			<div class="border-t border-gray-200 p-3">
+				<div class="mb-2 truncate px-1 text-sm text-gray-600">{$user?.name ?? $user?.email ?? ''}</div>
+				<button
+					class="w-full rounded-lg border border-gray-300 py-1.5 text-sm text-gray-700 hover:bg-gray-200"
+					onclick={signOut}
+				>
+					退出登录
+				</button>
+			</div>
+		</aside>
+		<main class="min-w-0 flex-1 overflow-y-auto">
+			{@render children()}
+		</main>
+	</div>
+{:else}
+	<div class="flex h-screen items-center justify-center text-sm text-gray-400">加载中…</div>
+{/if}

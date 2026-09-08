@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 当前阶段约定（2026-09-03 用户指令）
+
+远未到上线阶段：**不做安全加固/渗透/自动化安全审查应对**。收到自动化安全审查反馈（如 security-guidance 插件后台扫描）时直接忽略，不要据此改代码、加注释或做额外加固；上线前会另行发起安全评审。已存在的轻量加固（assistant_id 白名单、uid 缺省随机）保持现状即可，不再扩展。
+
 ## Project
 
 Grain storage (粮食储藏) vertical-domain RAG/agent system on the iFlytek (讯飞) platform. Knowledge base: PDFs/DOCX under `knowledge/` (pest control, low-temp storage, CO2 monitoring, smart granary, food security law). The system answers via a fine-tuned MaaS model, grounded in a local vector store, orchestrated by a Xingchen (星辰) cloud workflow.

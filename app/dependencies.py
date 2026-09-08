@@ -12,3 +12,4 @@ class ServiceContainer:
     citations: Any
     contexts: RequestContextStore
     workflow: Any
+    knowledge: Any = None

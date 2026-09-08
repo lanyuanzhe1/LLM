@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+sqlalchemy[asyncio]
+aiosqlite
+PyJWT
+bcrypt
+pytz
+httpx
