@@ -90,3 +90,16 @@ class CaseAnalyzeRequest(StrictPublicRequest):
     role: Role = Role.TECHNICIAN
     case: CaseData
     project_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class AssistantTurn(StrictPublicRequest):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+
+
+class AssistantChatRequest(StrictPublicRequest):
+    """星火助手（智能体广场）对话请求。"""
+
+    assistant_id: str = Field(min_length=1, max_length=128)
+    messages: list[AssistantTurn] = Field(min_length=1, max_length=64)
+    uid: str | None = Field(default=None, min_length=1, max_length=128)

@@ -69,6 +69,21 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
             学习规划
           </MenuItem>
         </MenuSection>
+
+        <MenuSection label='智能体广场'>
+          <MenuItem href='/plaza/grain-knowledge' icon={<i className='ri-book-mark-line' />}>
+            粮食知识库智能体
+          </MenuItem>
+          <MenuItem href='/plaza/grain-research' icon={<i className='ri-flask-line' />}>
+            仓储科研智能体
+          </MenuItem>
+          <MenuItem href='/plaza/teaching-assistant' icon={<i className='ri-presentation-line' />}>
+            助教智能体
+          </MenuItem>
+          <MenuItem href='/plaza/learning-assistant' icon={<i className='ri-graduation-cap-line' />}>
+            助学智能体
+          </MenuItem>
+        </MenuSection>
       </Menu>
     </ScrollWrapper>
   )

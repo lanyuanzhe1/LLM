@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import cases, chat, health, knowledge, openai_compat, sources
+from app.api import assistant, cases, chat, health, knowledge, openai_compat, sources
 from app.clients.iflytek_chatdoc import IflytekChatDocClient
 from app.clients.iflytek_maas import IflytekMaaSClient
 from app.clients.xingchen_workflow import XingchenWorkflowClient
@@ -235,6 +235,7 @@ def create_app(
     application.include_router(health.router)
     application.include_router(openai_compat.router)
     application.include_router(chat.router)
+    application.include_router(assistant.router)
     application.include_router(cases.router)
     application.include_router(sources.router)
     application.include_router(knowledge.router)

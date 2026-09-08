@@ -195,6 +195,13 @@ class Settings(BaseSettings):
     workflow_provider: Literal["local", "xingchen"] = "local"
     tools_service_token: SecretStr
     xf_chatdoc_repo_id: str | None = None
+    # 星火助手（智能体广场）API：可选，未配置时 /v1/assistant/chat 返回 503
+    xf_assistant_app_id: str | None = None
+    xf_assistant_api_key: SecretStr | None = None
+    xf_assistant_api_secret: SecretStr | None = None
+    assistant_api_url: str = (
+        "wss://spark-openapi.cn-huabei-1.xf-yun.com/v1/assistants"
+    )
     openai_compat_api_key: SecretStr
     openai_compat_model_id: str = "grain-storage-agent"
     openai_compat_model_name: str = "粮储知识助手"
