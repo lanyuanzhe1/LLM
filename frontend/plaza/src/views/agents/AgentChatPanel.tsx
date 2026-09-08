@@ -14,6 +14,7 @@ import Typography from '@mui/material/Typography'
 
 import { consumeSse } from '@/lib/consumeSse'
 import { withBasePath } from '@/lib/base-path'
+import { genId } from '@/utils/genId'
 import type { AgentConfig } from '@/configs/agents'
 
 type Line = {
@@ -24,7 +25,7 @@ type Line = {
 	error?: boolean;
 };
 
-const createId = () => crypto.randomUUID();
+const createId = () => genId();
 
 const suggestions = [
 	'请用一两句话介绍你自己。',
