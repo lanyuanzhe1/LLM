@@ -18,3 +18,17 @@ API Secret:
 OTNjNjgyNzYxYTNiMDc2MTlkYzk5Njhi
 API Key：
 9f081ee81a95f4140eb295d269b06658
+
+接口地址：
+ws(s)://spark-openapi.cn-huabei-1.xf-yun.com/v1/assistants/xou2bntqeaa5_v1
+API Secret:
+OTNjNjgyNzYxYTNiMDc2MTlkYzk5Njhi
+API Key：
+9f081ee81a95f4140eb295d269b06658
+
+接口地址：
+ws(s)://spark-openapi.cn-huabei-1.xf-yun.com/v1/assistants/khhye2gs67wy_v1
+API Secret:
+OTNjNjgyNzYxYTNiMDc2MTlkYzk5Njhi
+API Key：
+9f081ee81a95f4140eb295d269b06658

@@ -35,7 +35,8 @@ export const agents: AgentConfig[] = [
 		icon: 'ri-flask-line',
 		color: '#2563EB',
 		featured: true,
-		url: 'https://agent.xfyun.cn/agentbuilder/chat?sharekey=4118df001988f10de46adf63fae40a6e&botId=5807479'
+		url: 'https://agent.xfyun.cn/agentbuilder/chat?sharekey=4118df001988f10de46adf63fae40a6e&botId=5807479',
+		assistantId: 'khhye2gs67wy_v1'
 	},
 	{
 		id: 'teaching-assistant',
@@ -56,7 +57,8 @@ export const agents: AgentConfig[] = [
 		icon: 'ri-graduation-cap-line',
 		color: '#DB2777',
 		featured: true,
-		url: 'https://agent.xfyun.cn/agentbuilder/chat?sharekey=60cc7cfdcd8623bf707ba62ee070dc17&botId=5807465'
+		url: 'https://agent.xfyun.cn/agentbuilder/chat?sharekey=60cc7cfdcd8623bf707ba62ee070dc17&botId=5807465',
+		assistantId: 'xou2bntqeaa5_v1'
 	}
 ];
 

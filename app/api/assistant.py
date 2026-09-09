@@ -17,6 +17,8 @@ _ALLOWED_ASSISTANT_IDS: frozenset[str] = frozenset(
     {
         "kpevnp8z2ff2_v1",  # 粮食行业知识库智能体
         "xyzrra1uxi9w_v1",  # 助教智能体·星廪智枢
+        "khhye2gs67wy_v1",  # 粮食仓储科研智能体·星廪智枢
+        "xou2bntqeaa5_v1",  # 助学智能体·星廪智枢
     }
 )
 

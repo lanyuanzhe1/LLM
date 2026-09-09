@@ -12,12 +12,9 @@ vector_store/
 .playwright-mcp/
 ocr_cache/
 ocr_cache/
-.env.example
 .gitignore
 !frontend/webui/.gitignore
 !frontend/plaza/.gitignore
-!frontend/plaza/.env.example
-.env.example
 .playwright-mcp/
 workflow/
 .agents/
@@ -27,3 +24,4 @@ workflow/
 CLAUDE.md
 services/webui/data/
 example/frontend/
+example/
