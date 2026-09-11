@@ -32,3 +32,17 @@ API Secret:
 OTNjNjgyNzYxYTNiMDc2MTlkYzk5Njhi
 API Key：
 9f081ee81a95f4140eb295d269b06658
+
+
+已绑定的APPID:
+911d520f
+应用名:
+星廪智枢
+*绑定应用后即可查看具体的接口鉴权参数，应用绑定后无法修改，请谨慎选择
+
+接口地址：
+ws(s)://spark-openapi.cn-huabei-1.xf-yun.com/v1/assistants/jgbpbhycgdt8_v1
+API Secret:
+OTNjNjgyNzYxYTNiMDc2MTlkYzk5Njhi
+API Key：
+9f081ee81a95f4140eb295d269b06658
