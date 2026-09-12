@@ -83,6 +83,9 @@ const VerticalMenu = ({ scrollMenu }: { scrollMenu: (container: any, isPerfectSc
           <MenuItem href='/plaza/learning-assistant' icon={<i className='ri-graduation-cap-line' />}>
             助学智能体
           </MenuItem>
+          <MenuItem href='/plaza/ppt-writer' icon={<i className='ri-slideshow-2-line' />}>
+            PPT 创作智能体
+          </MenuItem>
         </MenuSection>
       </Menu>
     </ScrollWrapper>

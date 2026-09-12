@@ -103,3 +103,10 @@ class AssistantChatRequest(StrictPublicRequest):
     assistant_id: str = Field(min_length=1, max_length=128)
     messages: list[AssistantTurn] = Field(min_length=1, max_length=64)
     uid: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class PptxExportRequest(StrictPublicRequest):
+    """智能体演示文案导出 pptx 请求。"""
+
+    content: str = Field(min_length=1, max_length=20000)
+    title: str | None = Field(default=None, max_length=200)

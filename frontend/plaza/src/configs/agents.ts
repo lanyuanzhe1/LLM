@@ -13,6 +13,9 @@ export type AgentConfig = {
 	featured: boolean;
 	url: string;
 	assistantId?: string;
+
+	// 该智能体的回答可一键导出为 .pptx（后端 /v1/assistant/pptx 转换）
+	pptExport?: boolean;
 };
 
 export const agents: AgentConfig[] = [
@@ -59,6 +62,20 @@ export const agents: AgentConfig[] = [
 		featured: true,
 		url: 'https://agent.xfyun.cn/agentbuilder/chat?sharekey=60cc7cfdcd8623bf707ba62ee070dc17&botId=5807465',
 		assistantId: 'xou2bntqeaa5_v1'
+	},
+	{
+		id: 'ppt-writer',
+		name: 'PPT 创作智能体',
+		description: '生成演示文稿文案，一键导出 PPT 文件',
+		category: '创作',
+		icon: 'ri-slideshow-2-line',
+		color: '#D97706',
+		featured: true,
+
+		// 该智能体只发布了 API（无分享链接），url 置空、页头不显示"新窗口打开"
+		url: '',
+		assistantId: 'jgbpbhycgdt8_v1',
+		pptExport: true
 	}
 ];
 

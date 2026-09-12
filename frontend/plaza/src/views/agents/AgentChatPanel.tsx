@@ -36,6 +36,7 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 	const [messages, setMessages] = useState<Line[]>([]);
 	const [input, setInput] = useState('');
 	const [streaming, setStreaming] = useState(false);
+	const [exportingId, setExportingId] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
 	const listRef = useRef<HTMLDivElement | null>(null);
 	const sessionRef = useRef<string>(createId());
@@ -44,6 +45,38 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 
 	const updateLine = (id: string, update: (line: Line) => Line) => {
 		setMessages(current => current.map(message => (message.id === id ? update(message) : message)));
+	};
+
+	// 把一条助手回答发给后端转成 .pptx 并触发浏览器下载（HTTP 裸 IP 环境可用，不依赖 crypto API）
+	const exportPptx = async (message: Line) => {
+		if (exportingId) return;
+
+		setExportingId(message.id);
+
+		try {
+			const response = await fetch(withBasePath('/api/backend/assistant-pptx'), {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ content: message.content, title: agent.name })
+			});
+
+			if (!response.ok) {
+				throw new Error(`导出失败（HTTP ${response.status}）`);
+			}
+
+			const blob = await response.blob();
+			const objectUrl = URL.createObjectURL(blob);
+			const anchor = document.createElement('a');
+
+			anchor.href = objectUrl;
+			anchor.download = '演示文稿.pptx';
+			anchor.click();
+			URL.revokeObjectURL(objectUrl);
+		} catch (error) {
+			alert(error instanceof Error ? error.message : '导出失败。');
+		} finally {
+			setExportingId(null);
+		}
 	};
 
 	const send = async (text?: string) => {
@@ -170,6 +203,18 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 									>
 										{message.content || (message.pending && <span className='flex items-center gap-2'><CircularProgress size={16} />正在思考…</span>)}
 									</Box>
+									{agent.pptExport && message.role === 'assistant' && !message.pending && !message.error && message.content ? (
+										<Button
+											size='small'
+											variant='text'
+											disabled={exportingId === message.id}
+											onClick={() => void exportPptx(message)}
+											startIcon={<i className='ri-download-2-line' />}
+											sx={{ mt: 1 }}
+										>
+											{exportingId === message.id ? '正在生成 PPT…' : '下载 PPT'}
+										</Button>
+									) : null}
 								</Box>
 							</Box>
 						))}
