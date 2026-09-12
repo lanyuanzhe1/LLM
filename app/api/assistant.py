@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.schemas.api import AssistantChatRequest, PptxExportRequest
 from app.services.assistant_chat import stream_assistant
-from app.services.pptx_export import build_pptx
+from app.services.pptx_export import build_pptx, paginate_sections, parse_deck
 
 
 router = APIRouter(prefix="/v1", tags=["assistant"])
@@ -98,3 +98,17 @@ async def assistant_pptx(payload: PptxExportRequest) -> Response:
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
     )
+
+
+@router.post("/assistant/pptx/preview", response_model=None)
+async def assistant_pptx_preview(payload: PptxExportRequest) -> JSONResponse:
+    """返回与 pptx 同一份解析/分页结果的结构化预览，供页内幻灯片查看器渲染。
+
+    is_deck=False 表示文案不是演示大纲（智能体在反问/寒暄），前端不应展示 PPT 卡片。
+    """
+    deck_title, sections, is_deck = parse_deck(payload.content, title=payload.title)
+    pages = [
+        {"heading": heading, "bullets": bullets}
+        for heading, bullets in paginate_sections(sections)
+    ]
+    return JSONResponse({"title": deck_title, "pages": pages, "is_deck": is_deck and bool(pages)})

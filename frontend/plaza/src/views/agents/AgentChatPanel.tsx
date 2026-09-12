@@ -16,6 +16,8 @@ import { consumeSse } from '@/lib/consumeSse'
 import { withBasePath } from '@/lib/base-path'
 import { genId } from '@/utils/genId'
 import type { AgentConfig } from '@/configs/agents'
+import type { PptxPreviewData } from '@/views/agents/PptxPreview'
+import PptxPreview from '@/views/agents/PptxPreview'
 
 type Line = {
 	id: string;
@@ -23,6 +25,7 @@ type Line = {
 	content: string;
 	pending?: boolean;
 	error?: boolean;
+	preview?: PptxPreviewData;
 };
 
 const createId = () => genId();
@@ -36,7 +39,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 	const [messages, setMessages] = useState<Line[]>([]);
 	const [input, setInput] = useState('');
 	const [streaming, setStreaming] = useState(false);
-	const [exportingId, setExportingId] = useState<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
 	const listRef = useRef<HTMLDivElement | null>(null);
 	const sessionRef = useRef<string>(createId());
@@ -47,36 +49,21 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 		setMessages(current => current.map(message => (message.id === id ? update(message) : message)));
 	};
 
-	// 把一条助手回答发给后端转成 .pptx 并触发浏览器下载（HTTP 裸 IP 环境可用，不依赖 crypto API）
-	const exportPptx = async (message: Line) => {
-		if (exportingId) return;
+	// 回答完成后拉取 pptx 结构化预览：成功则在该条气泡下渲染 PPT 文件卡片；失败静默（不影响对话）
+	const loadPreview = async (lineId: string, content: string) => {
+		const response = await fetch(withBasePath('/api/backend/assistant-pptx/preview'), {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ content })
+		}).catch(() => null);
 
-		setExportingId(message.id);
+		if (!response?.ok) return;
 
-		try {
-			const response = await fetch(withBasePath('/api/backend/assistant-pptx'), {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ content: message.content, title: agent.name })
-			});
+		const preview = (await response.json()) as PptxPreviewData;
 
-			if (!response.ok) {
-				throw new Error(`导出失败（HTTP ${response.status}）`);
-			}
+		if (!preview.is_deck || !preview.pages?.length) return;
 
-			const blob = await response.blob();
-			const objectUrl = URL.createObjectURL(blob);
-			const anchor = document.createElement('a');
-
-			anchor.href = objectUrl;
-			anchor.download = '演示文稿.pptx';
-			anchor.click();
-			URL.revokeObjectURL(objectUrl);
-		} catch (error) {
-			alert(error instanceof Error ? error.message : '导出失败。');
-		} finally {
-			setExportingId(null);
-		}
+		updateLine(lineId, current => ({ ...current, preview }));
 	};
 
 	const send = async (text?: string) => {
@@ -96,6 +83,8 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 		setInput('');
 		setStreaming(true);
 		abortRef.current = controller;
+
+		let fullContent = '';
 
 		try {
 			const response = await fetch(withBasePath('/api/backend/assistant-chat'), {
@@ -119,6 +108,7 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 				const payload = data as Record<string, unknown>;
 
 				if (event === 'delta' && typeof payload.content === 'string') {
+					fullContent += payload.content;
 					updateLine(assistantId, current => ({ ...current, content: current.content + payload.content, pending: true }));
 				}
 
@@ -130,6 +120,10 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 
 				if (event === 'done') {
 					updateLine(assistantId, current => ({ ...current, pending: false }));
+
+					if (agent.pptExport && fullContent.trim()) {
+						void loadPreview(assistantId, fullContent);
+					}
 				}
 			});
 		} catch (error) {
@@ -203,17 +197,13 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 									>
 										{message.content || (message.pending && <span className='flex items-center gap-2'><CircularProgress size={16} />正在思考…</span>)}
 									</Box>
-									{agent.pptExport && message.role === 'assistant' && !message.pending && !message.error && message.content ? (
-										<Button
-											size='small'
-											variant='text'
-											disabled={exportingId === message.id}
-											onClick={() => void exportPptx(message)}
-											startIcon={<i className='ri-download-2-line' />}
-											sx={{ mt: 1 }}
-										>
-											{exportingId === message.id ? '正在生成 PPT…' : '下载 PPT'}
-										</Button>
+									{agent.pptExport && message.preview ? (
+										<PptxPreview
+											preview={message.preview}
+											color={agent.color}
+											fileName='演示文稿.pptx'
+											sourceText={message.content}
+										/>
 									) : null}
 								</Box>
 							</Box>

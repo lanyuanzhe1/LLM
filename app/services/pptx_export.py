@@ -20,6 +20,7 @@ MAX_CHARS_PER_SLIDE = 180
 _HEADING1 = re.compile(r"^#\s+")
 _HEADING = re.compile(r"^#{2,6}\s+")
 _BULLET = re.compile(r"^(?:[-*•·]+|\d+[.、)）])\s*")
+_DECK_TITLE = re.compile(r"^(?:主标题|标题|题目)\s*[:：]\s*(.+)$")
 
 
 def _clean(line: str) -> str:
@@ -42,8 +43,12 @@ def _paginate(bullets: list[str]) -> list[list[str]]:
     return pages or [[]]
 
 
-def build_pptx(text: str, title: str | None = None) -> bytes:
-    """把文案转成 pptx 字节流。text 为空时抛出 ValueError。"""
+def parse_deck(text: str, title: str | None = None) -> tuple[str, list[tuple[str, list[str]]], bool]:
+    """把文案解析为 (标题页标题, [(小节标题, [要点])], 是否真分节)。
+
+    is_deck=False 表示文案没有 `## ` 分节标题（如智能体在反问/寒暄而非产出大纲），
+    调用方应避免把这类内容当成演示文稿。
+    """
     lines = [raw.strip() for raw in text.splitlines() if raw.strip()]
     has_sections = any(_HEADING.match(line) for line in lines)
 
@@ -75,6 +80,33 @@ def build_pptx(text: str, title: str | None = None) -> bytes:
     if title is None and deck_title == "演示文稿" and preamble:
         deck_title = preamble[0]
 
+    if title is None:
+        # 「标题：xxx」要点做标题页标题（比智能体名合适）：封面小节优先，其次任意小节
+        ordered = sorted(enumerate(slides), key=lambda kv: (("封面" not in kv[1][0]), kv[0]))
+        for _i, (_heading, bullets) in ordered:
+            for bullet in bullets:
+                match = _DECK_TITLE.match(bullet)
+                if match:
+                    return match.group(1).strip(), slides, has_sections
+
+    return deck_title, slides, has_sections
+
+
+def paginate_sections(slides: list[tuple[str, list[str]]]) -> list[tuple[str, list[str]]]:
+    """按分页规则展开为 [(页标题, [要点])]，与 pptx 实际分页保持一致；空要点小节直接跳过。"""
+    pages: list[tuple[str, list[str]]] = []
+    for heading, bullets in slides:
+        if not bullets:
+            continue
+        for page, chunk in enumerate(_paginate(bullets)):
+            pages.append((heading if page == 0 else f"{heading}（续）", chunk))
+    return pages
+
+
+def build_pptx(text: str, title: str | None = None) -> bytes:
+    """把文案转成 pptx 字节流。text 为空时抛出 ValueError。"""
+    deck_title, slides, _has_sections = parse_deck(text, title)
+
     prs = Presentation()
 
     first = prs.slides.add_slide(prs.slide_layouts[0])
@@ -82,17 +114,16 @@ def build_pptx(text: str, title: str | None = None) -> bytes:
     if first.placeholders and len(first.placeholders) > 1:
         first.placeholders[1].text = "由智能体生成"
 
-    for heading, bullets in slides:
-        for page, chunk in enumerate(_paginate(bullets)):
-            slide = prs.slides.add_slide(prs.slide_layouts[1])
-            slide.shapes.title.text = heading if page == 0 else f"{heading}（续）"
-            body = slide.placeholders[1].text_frame
-            body.clear()
-            body.word_wrap = True
-            body.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
-            for index, bullet in enumerate(chunk):
-                paragraph = body.paragraphs[0] if index == 0 else body.add_paragraph()
-                paragraph.text = bullet
+    for heading, chunk in paginate_sections(slides):
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = heading
+        body = slide.placeholders[1].text_frame
+        body.clear()
+        body.word_wrap = True
+        body.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        for index, bullet in enumerate(chunk):
+            paragraph = body.paragraphs[0] if index == 0 else body.add_paragraph()
+            paragraph.text = bullet
 
     buffer = BytesIO()
     prs.save(buffer)
