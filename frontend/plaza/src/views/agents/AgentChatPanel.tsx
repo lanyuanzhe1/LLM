@@ -14,10 +14,7 @@ import Typography from '@mui/material/Typography'
 
 import { consumeSse } from '@/lib/consumeSse'
 import { withBasePath } from '@/lib/base-path'
-import { genId } from '@/utils/genId'
 import type { AgentConfig } from '@/configs/agents'
-import type { PptxPreviewData } from '@/views/agents/PptxPreview'
-import PptxPreview from '@/views/agents/PptxPreview'
 
 type Line = {
 	id: string;
@@ -25,10 +22,9 @@ type Line = {
 	content: string;
 	pending?: boolean;
 	error?: boolean;
-	preview?: PptxPreviewData;
 };
 
-const createId = () => genId();
+const createId = () => crypto.randomUUID();
 
 const suggestions = [
 	'请用一两句话介绍你自己。',
@@ -49,23 +45,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 		setMessages(current => current.map(message => (message.id === id ? update(message) : message)));
 	};
 
-	// 回答完成后拉取 pptx 结构化预览：成功则在该条气泡下渲染 PPT 文件卡片；失败静默（不影响对话）
-	const loadPreview = async (lineId: string, content: string) => {
-		const response = await fetch(withBasePath('/api/backend/assistant-pptx/preview'), {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ content })
-		}).catch(() => null);
-
-		if (!response?.ok) return;
-
-		const preview = (await response.json()) as PptxPreviewData;
-
-		if (!preview.is_deck || !preview.pages?.length) return;
-
-		updateLine(lineId, current => ({ ...current, preview }));
-	};
-
 	const send = async (text?: string) => {
 		const content = (text ?? input).trim();
 
@@ -83,8 +62,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 		setInput('');
 		setStreaming(true);
 		abortRef.current = controller;
-
-		let fullContent = '';
 
 		try {
 			const response = await fetch(withBasePath('/api/backend/assistant-chat'), {
@@ -108,7 +85,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 				const payload = data as Record<string, unknown>;
 
 				if (event === 'delta' && typeof payload.content === 'string') {
-					fullContent += payload.content;
 					updateLine(assistantId, current => ({ ...current, content: current.content + payload.content, pending: true }));
 				}
 
@@ -120,10 +96,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 
 				if (event === 'done') {
 					updateLine(assistantId, current => ({ ...current, pending: false }));
-
-					if (agent.pptExport && fullContent.trim()) {
-						void loadPreview(assistantId, fullContent);
-					}
 				}
 			});
 		} catch (error) {
@@ -197,14 +169,6 @@ const AgentChatPanel = ({ agent }: { agent: AgentConfig }) => {
 									>
 										{message.content || (message.pending && <span className='flex items-center gap-2'><CircularProgress size={16} />正在思考…</span>)}
 									</Box>
-									{agent.pptExport && message.preview ? (
-										<PptxPreview
-											preview={message.preview}
-											color={agent.color}
-											fileName='演示文稿.pptx'
-											sourceText={message.content}
-										/>
-									) : null}
 								</Box>
 							</Box>
 						))}

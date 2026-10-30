@@ -24,13 +24,11 @@ const AgentChat = ({ agent }: { agent: AgentConfig }) => {
             </Typography>
           </div>
         </div>
-        {agent.url ? (
-          <Tooltip title='在新窗口打开'>
-            <IconButton component='a' href={agent.url} target='_blank' rel='noopener noreferrer' size='small'>
-              <i className='ri-external-link-line' />
-            </IconButton>
-          </Tooltip>
-        ) : null}
+        <Tooltip title='在新窗口打开'>
+          <IconButton component='a' href={agent.url} target='_blank' rel='noopener noreferrer' size='small'>
+            <i className='ri-external-link-line' />
+          </IconButton>
+        </Tooltip>
       </CardContent>
       {useApiChat ? (
         <AgentChatPanel agent={agent} />

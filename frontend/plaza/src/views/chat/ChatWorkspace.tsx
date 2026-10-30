@@ -28,7 +28,6 @@ import Typography from '@mui/material/Typography'
 
 import { consumeSse } from '@/lib/consumeSse'
 import { withBasePath } from '@/lib/base-path'
-import { genId } from '@/utils/genId'
 import type { ChatMessage, Citation, UserRole } from '@/types/grain'
 
 const welcomeMessage: ChatMessage = {
@@ -72,7 +71,7 @@ const roleLabels: Record<UserRole, string> = {
   technician: '粮库技术人员'
 }
 
-const createId = () => genId()
+const createId = () => crypto.randomUUID()
 
 const ChatWorkspace = () => {
   const searchParams = useSearchParams()

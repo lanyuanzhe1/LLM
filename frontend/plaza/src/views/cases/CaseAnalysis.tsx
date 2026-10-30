@@ -20,7 +20,6 @@ import Typography from '@mui/material/Typography'
 
 import { consumeSse } from '@/lib/consumeSse'
 import { withBasePath } from '@/lib/base-path'
-import { genId } from '@/utils/genId'
 import type { Citation } from '@/types/grain'
 
 type FormState = {
@@ -93,7 +92,7 @@ const CaseAnalysis = () => {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('grain-case-session') || genId()
+    const stored = window.localStorage.getItem('grain-case-session') || crypto.randomUUID()
 
     window.localStorage.setItem('grain-case-session', stored)
     setSessionId(stored)

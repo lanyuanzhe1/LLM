@@ -1,14 +1,12 @@
 import json
 import uuid
 from collections.abc import AsyncIterator
-from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app.schemas.api import AssistantChatRequest, PptxExportRequest
+from app.schemas.api import AssistantChatRequest
 from app.services.assistant_chat import stream_assistant
-from app.services.pptx_export import build_pptx, paginate_sections, parse_deck
 
 
 router = APIRouter(prefix="/v1", tags=["assistant"])
@@ -19,9 +17,6 @@ _ALLOWED_ASSISTANT_IDS: frozenset[str] = frozenset(
     {
         "kpevnp8z2ff2_v1",  # 粮食行业知识库智能体
         "xyzrra1uxi9w_v1",  # 助教智能体·星廪智枢
-        "khhye2gs67wy_v1",  # 粮食仓储科研智能体·星廪智枢
-        "xou2bntqeaa5_v1",  # 助学智能体·星廪智枢
-        "jgbpbhycgdt8_v1",  # PPT 创作智能体（只产文案，pptx 由本服务转换）
     }
 )
 
@@ -86,29 +81,3 @@ async def assistant_chat(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@router.post("/assistant/pptx", response_model=None)
-async def assistant_pptx(payload: PptxExportRequest) -> Response:
-    """把智能体生成的演示文案转成 .pptx 下载（PPT 智能体只产文案，转换在本服务）。"""
-    data = build_pptx(payload.content, title=payload.title)
-    filename = quote("智能体演示文稿.pptx")
-    return Response(
-        content=data,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
-    )
-
-
-@router.post("/assistant/pptx/preview", response_model=None)
-async def assistant_pptx_preview(payload: PptxExportRequest) -> JSONResponse:
-    """返回与 pptx 同一份解析/分页结果的结构化预览，供页内幻灯片查看器渲染。
-
-    is_deck=False 表示文案不是演示大纲（智能体在反问/寒暄），前端不应展示 PPT 卡片。
-    """
-    deck_title, sections, is_deck = parse_deck(payload.content, title=payload.title)
-    pages = [
-        {"heading": heading, "bullets": bullets}
-        for heading, bullets in paginate_sections(sections)
-    ]
-    return JSONResponse({"title": deck_title, "pages": pages, "is_deck": is_deck and bool(pages)})
